@@ -11,6 +11,12 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Open issues with one of these labels are candidates before clone (REST Issues API).
+SUITABLE_ISSUE_LABELS = (
+    "good first issue",
+    "help wanted",
+)
+
 # Tried in order via Contents API (paths relative to repo root).
 CONTRIBUTING_PATHS = (
     "CONTRIBUTING.md",
@@ -58,6 +64,49 @@ def get_token_login(token: str | None) -> str | None:
     except (requests.RequestException, ValueError, TypeError) as e:
         logger.warning("Could not resolve GitHub login: %s", e)
         return None
+
+
+def find_first_suitable_open_issue(
+    owner: str,
+    name: str,
+    token: str | None,
+    *,
+    per_label_limit: int = 5,
+) -> int | None:
+    """
+    Return the number of an open issue labeled 'good first issue' or 'help wanted'.
+
+    Skips pull requests (the Issues API returns PRs too). Tries labels in order.
+    """
+    headers = _api_headers(token)
+    cap = min(max(per_label_limit, 1), 100)
+    for label in SUITABLE_ISSUE_LABELS:
+        url = f"https://api.github.com/repos/{owner}/{name}/issues"
+        params = {
+            "state": "open",
+            "labels": label,
+            "per_page": cap,
+            "sort": "created",
+            "direction": "desc",
+        }
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=20)
+            r.raise_for_status()
+        except requests.RequestException as e:
+            logger.warning("Issue list failed for %s/%s label=%r: %s", owner, name, label, e)
+            continue
+        items = r.json()
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("pull_request") is not None:
+                continue
+            num = item.get("number")
+            if isinstance(num, int) and num > 0:
+                return num
+    return None
 
 
 def user_has_pr_to_repo(login: str, owner: str, name: str, token: str | None) -> bool:

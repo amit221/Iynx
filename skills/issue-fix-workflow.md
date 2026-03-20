@@ -2,6 +2,24 @@
 
 Reusable workflow for fixing open-source issues: triage, implement, test, and submit.
 
+## Repository
+
+When the user names a repo, treat it as the work target before picking an issue or cloning anything else.
+
+**Accepted forms**
+
+- `owner/repo` (e.g. `python/cpython`)
+- HTTPS or SSH clone URL
+- Path to an existing local clone
+
+**What to do**
+
+1. Resolve to a local directory: use the given path if it exists and is a git repo; otherwise clone into a sensible location (e.g. workspace subfolder or the user’s stated directory).
+2. `cd` there for all subsequent commands (search, edit, test, commit).
+3. If the user also gives an issue or PR link, confirm it belongs to the same `owner/repo` (or explain the mismatch).
+
+If no repo is given, assume the current workspace root or ask once for `owner/repo` / URL / path.
+
 ## Quick Checklist
 
 - [ ] Pick a suitable issue

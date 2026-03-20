@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from bootstrap import write_bootstrap
 from discovery import RepoInfo, fetch_repo_candidates
 from github_repo_checks import (
+    find_first_suitable_open_issue,
     get_token_login,
     repo_has_contributing_guide,
     user_has_pr_to_repo,
@@ -35,34 +36,22 @@ WORKSPACE = PROJECT_ROOT / "workspace"
 SKILLS_DIR = PROJECT_ROOT / "skills"
 DOCKER_IMAGE = "iynx-agent:latest"
 
+# Discovery defaults (change here; no env vars).
+DISCOVERY_POOL_SIZE = 100
+DISCOVERY_MIN_STARS = 50
+DISCOVERY_MAX_REPO_AGE_DAYS = 30  # None = no created:> filter
+DISCOVERY_MAX_PAGES = 5
+DISCOVERY_PER_PAGE = 30
+DISCOVERY_LANGUAGE: str | None = None
+REQUIRE_CONTRIBUTING_GUIDE = True
+SKIP_REPOS_WITH_USER_PRS = True
+
+CURSOR_AGENT_MODEL = "composer-2"
+
+# If True, Docker re-runs test_command from .iynx/context.json after the fix.
+VERIFY_TESTS_AFTER_FIX = False
+
 logger = logging.getLogger(__name__)
-
-
-def _env_bool(key: str, default: str) -> bool:
-    return os.environ.get(key, default).strip().lower() in ("1", "true", "yes")
-
-
-def _env_int(key: str, default: int) -> int:
-    raw = os.environ.get(key)
-    if raw is None or not str(raw).strip():
-        return default
-    try:
-        return int(str(raw).strip())
-    except ValueError:
-        logger.warning("Invalid integer for %s=%r; using default %s", key, raw, default)
-        return default
-
-
-def _env_optional_int(key: str, default: str) -> int | None:
-    """Empty env means None (no filter)."""
-    raw = os.environ.get(key, default).strip()
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning("Invalid integer for %s=%r; treating as unset (no filter)", key, raw)
-        return None
 
 
 def _read_json_file(path: Path) -> dict | None:
@@ -90,56 +79,50 @@ def load_pr_draft(iynx_dir: Path, issue_num: int) -> tuple[str, str]:
     return title.strip(), body
 
 
-def discover_repos_for_run(limit: int, token: str | None) -> list[RepoInfo]:
+def discover_repos_for_run(token: str | None) -> list[RepoInfo]:
     """
     Search GitHub, then apply CONTRIBUTING and 'already contributed' filters.
-    """
-    pool_default = max(limit * 20, 50)
-    pool_size = min(_env_int("IYNX_DISCOVERY_POOL_SIZE", pool_default), 100)
-    min_stars = _env_int("IYNX_MIN_STARS", 50)
-    max_age_days = _env_optional_int("IYNX_MAX_REPO_AGE_DAYS", "30")
-    max_pages = _env_int("IYNX_DISCOVERY_MAX_PAGES", 5)
-    per_page = min(_env_int("IYNX_DISCOVERY_PER_PAGE", 30), 100)
 
+    Returns every candidate in the search pool that passes filters (see module constants).
+    """
+    pool_size = min(DISCOVERY_POOL_SIZE, 100)
     candidates = fetch_repo_candidates(
         token=token,
         pool_size=pool_size,
-        min_stars=min_stars,
-        max_age_days=max_age_days,
-        language=os.environ.get("IYNX_LANGUAGE") or None,
-        max_pages=max_pages,
-        per_page=per_page,
+        min_stars=DISCOVERY_MIN_STARS,
+        max_age_days=DISCOVERY_MAX_REPO_AGE_DAYS,
+        language=DISCOVERY_LANGUAGE,
+        max_pages=DISCOVERY_MAX_PAGES,
+        per_page=min(DISCOVERY_PER_PAGE, 100),
     )
-    require_contrib = _env_bool("IYNX_REQUIRE_CONTRIBUTING", "1")
-    skip_contributed = _env_bool("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
-    login = get_token_login(token) if skip_contributed and token else None
-    if skip_contributed and token and not login:
+    login = get_token_login(token) if SKIP_REPOS_WITH_USER_PRS and token else None
+    if SKIP_REPOS_WITH_USER_PRS and token and not login:
         logger.warning("Could not resolve GitHub login; skipping 'already contributed' filter")
 
     filtered: list[RepoInfo] = []
     for repo in candidates:
-        if require_contrib:
+        if REQUIRE_CONTRIBUTING_GUIDE:
             if not repo_has_contributing_guide(repo.owner, repo.name, token):
                 logger.debug("Skip %s: no CONTRIBUTING guide", repo.full_name)
                 continue
-        if skip_contributed and login:
+        if SKIP_REPOS_WITH_USER_PRS and login:
             if user_has_pr_to_repo(login, repo.owner, repo.name, token):
                 logger.debug("Skip %s: user already has PRs", repo.full_name)
                 continue
         filtered.append(repo)
-        if len(filtered) >= limit:
-            break
 
     return filtered
 
 
 def _maybe_verify_tests(dest: Path) -> bool:
     """Optional second run of test_command from .iynx/context.json inside Docker."""
-    if not _env_bool("IYNX_VERIFY_TESTS", "0"):
+    if not VERIFY_TESTS_AFTER_FIX:
         return True
     ctx = _read_json_file(dest / ".iynx" / "context.json")
     if not ctx:
-        logger.warning("IYNX_VERIFY_TESTS=1 but no valid .iynx/context.json; skipping verify")
+        logger.warning(
+            "VERIFY_TESTS_AFTER_FIX set but no valid .iynx/context.json; skipping verify"
+        )
         return True
     cmd = ctx.get("test_command")
     if not isinstance(cmd, str) or not cmd.strip():
@@ -277,8 +260,7 @@ def run_cursor_phase(
         "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
     }
     args = ["-p", "--output-format", "text", "--trust"]
-    model = (os.environ.get("IYNX_CURSOR_MODEL") or "composer-2").strip() or "composer-2"
-    args.extend(["--model", model])
+    args.extend(["--model", CURSOR_AGENT_MODEL])
     if force:
         args.append("--force")
     args.append(prompt)
@@ -307,10 +289,19 @@ def run_one_repo(repo: RepoInfo, max_retries: int = 2) -> bool:
     """
     Full flow for one repo: clone, bootstrap, Cursor phases, PR.
     Returns True if PR was created, False otherwise.
-    Skips to next repo on failure; retries with backoff on transient errors.
+    Retries with backoff on transient errors.
     """
     skill = load_skill_prompt()
     dest = None
+    token = os.environ.get("GITHUB_TOKEN")
+    issue_num = find_first_suitable_open_issue(repo.owner, repo.name, token)
+    if issue_num is None:
+        logger.warning(
+            "No open issue labeled 'good first issue' or 'help wanted'; skipping %s (no clone)",
+            repo.full_name,
+        )
+        return False
+    logger.info("Preflight: %s — using open issue #%s", repo.full_name, issue_num)
 
     for attempt in range(max_retries):
         try:
@@ -350,26 +341,9 @@ Repo: {repo.full_name}
             if r1.returncode != 0:
                 logger.warning("Phase 1 failed: %s", r1.stderr)
 
-            # 4. Phase 2: List good first issues
-            phase2_prompt = """Using gh CLI, list open issues with labels 'good first issue' or 'help wanted'.
-Run: gh issue list --label "good first issue" --limit 5
-Or: gh issue list --label "help wanted" --limit 5
-Pick ONE issue number that looks scoped and reproducible. Reply with just the issue number (e.g. 42).
-"""
-            r2 = run_cursor_phase(dest, phase2_prompt)
-            if r2.returncode != 0:
-                logger.warning("Phase 2 failed: %s", r2.stderr)
-            issue_line = (r2.stdout or "").strip()
-            issue_num = None
-            for word in issue_line.split():
-                if word.isdigit():
-                    issue_num = int(word)
-                    break
-            if not issue_num:
-                logger.warning("No suitable issue found; skipping repo")
-                return False
+            # Issue number was chosen via GitHub API before clone (avoids cloning repos with nothing to fix).
 
-            # 5. Phase 3: Implement fix
+            # 4. Phase 3: Implement fix
             phase3_prompt = f"""{skill}
 
 Implement a fix for issue #{issue_num} in {repo.full_name}.
@@ -397,7 +371,7 @@ Create branch fix/issue-{issue_num} before committing.
                 logger.warning("Post-fix test verification failed; skipping PR")
                 return False
 
-            # 6. Phase 4: PR title/body JSON
+            # 5. Phase 4: PR title/body JSON
             phase4_prompt = f"""Read .iynx/summary.md, gh issue view {issue_num}, and the latest commit message/diff.
 Write ONLY valid JSON to .iynx/pr-draft.json (no markdown fence) with keys "title" and "body".
 The PR must follow repository PR conventions from the summary. Body should include: summary of changes, how to test, and a line "Fixes #{issue_num}".
@@ -478,19 +452,16 @@ def main() -> None:
 
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
-    limit = _env_int("IYNX_REPO_LIMIT", 5)
     token = os.environ.get("GITHUB_TOKEN")
-    repos = discover_repos_for_run(limit=limit, token=token)
+    repos = discover_repos_for_run(token=token)
     logger.info("Discovered %d repo(s) after filters", len(repos))
+    if not repos:
+        logger.info("No qualifying repositories; nothing to do.")
+        return
 
-    success_count = 0
-    for repo in repos:
-        success = run_one_repo(repo)
-        if success:
-            success_count += 1
-        if success_count >= 1 and _env_bool("IYNX_ONE_PR_PER_RUN", "1"):
-            break
-
+    repo = repos[0]
+    logger.info("Selected %s (first of %d qualifying)", repo.full_name, len(repos))
+    success_count = 1 if run_one_repo(repo) else 0
     logger.info("Done. %d PR(s) created.", success_count)
 
 

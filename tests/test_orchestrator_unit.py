@@ -13,37 +13,6 @@ import orchestrator
 from discovery import RepoInfo
 
 
-def test_env_bool(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("X", "1")
-    assert orchestrator._env_bool("X", "0") is True
-    monkeypatch.setenv("X", "false")
-    assert orchestrator._env_bool("X", "1") is False
-    monkeypatch.delenv("X", raising=False)
-    assert orchestrator._env_bool("X", "yes") is True
-
-
-def test_env_int(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N", " 42 ")
-    assert orchestrator._env_int("N", 0) == 42
-    monkeypatch.delenv("N", raising=False)
-    assert orchestrator._env_int("N", 7) == 7
-
-
-def test_env_int_invalid_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N", "not-a-number")
-    assert orchestrator._env_int("N", 99) == 99
-
-
-def test_env_optional_int_invalid_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("IYNX_TEST_AGE", "nope")
-    assert orchestrator._env_optional_int("IYNX_TEST_AGE", "30") is None
-
-
-def test_env_optional_int_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("N", "  ")
-    assert orchestrator._env_optional_int("N", "") is None
-
-
 def test_read_json_file_missing(tmp_path: Path) -> None:
     assert orchestrator._read_json_file(tmp_path / "none.json") is None
 
@@ -164,7 +133,7 @@ def test_clone_repo_failure(
 def test_maybe_verify_tests_runs_script(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
+    monkeypatch.setattr(orchestrator, "VERIFY_TESTS_AFTER_FIX", True)
     d = tmp_path / "repo"
     d.mkdir()
     iynx = d / ".iynx"
@@ -179,7 +148,7 @@ def test_maybe_verify_tests_runs_script(
 def test_maybe_verify_tests_skips_when_disabled(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("IYNX_VERIFY_TESTS", raising=False)
+    monkeypatch.setattr(orchestrator, "VERIFY_TESTS_AFTER_FIX", False)
     assert orchestrator._maybe_verify_tests(tmp_path) is True
     mock_docker.assert_not_called()
 
@@ -188,7 +157,7 @@ def test_maybe_verify_tests_skips_when_disabled(
 def test_maybe_verify_tests_no_context_json(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
+    monkeypatch.setattr(orchestrator, "VERIFY_TESTS_AFTER_FIX", True)
     d = tmp_path / "repo"
     d.mkdir()
     assert orchestrator._maybe_verify_tests(d) is True
@@ -199,7 +168,7 @@ def test_maybe_verify_tests_no_context_json(
 def test_maybe_verify_tests_empty_test_command(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
+    monkeypatch.setattr(orchestrator, "VERIFY_TESTS_AFTER_FIX", True)
     d = tmp_path / "repo"
     d.mkdir()
     iynx = d / ".iynx"
@@ -213,7 +182,7 @@ def test_maybe_verify_tests_empty_test_command(
 def test_maybe_verify_tests_fails_return_false(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
+    monkeypatch.setattr(orchestrator, "VERIFY_TESTS_AFTER_FIX", True)
     d = tmp_path / "repo"
     d.mkdir()
     iynx = d / ".iynx"
@@ -241,19 +210,16 @@ def test_rmtree_retry_chmod_non_permission_raises() -> None:
 @patch("orchestrator.repo_has_contributing_guide", return_value=True)
 @patch("orchestrator.user_has_pr_to_repo", return_value=False)
 @patch("orchestrator.get_token_login", return_value="alice")
-def test_discover_repos_for_run_respects_limit(
+def test_discover_repos_for_run_returns_all_filtered(
     _gl: MagicMock,
     _pr: MagicMock,
     _contrib: MagicMock,
     mock_fetch: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("IYNX_REQUIRE_CONTRIBUTING", "1")
-    monkeypatch.setenv("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
     repos_data = [RepoInfo("a", f"r{i}", f"a/r{i}", "u", i, None, None, "main") for i in range(5)]
     mock_fetch.return_value = repos_data
-    out = orchestrator.discover_repos_for_run(limit=2, token="tok")
-    assert len(out) == 2
+    out = orchestrator.discover_repos_for_run(token="tok")
+    assert len(out) == 5
     assert out[0].name == "r0"
 
 
@@ -262,13 +228,11 @@ def test_discover_repos_for_run_respects_limit(
 def test_discover_repos_skips_without_contributing(
     mock_contrib: MagicMock,
     mock_fetch: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("IYNX_REQUIRE_CONTRIBUTING", "1")
     mock_fetch.return_value = [
         RepoInfo("a", "r0", "a/r0", "u", 1, None, None, "main"),
     ]
-    assert orchestrator.discover_repos_for_run(limit=5, token="t") == []
+    assert orchestrator.discover_repos_for_run(token="t") == []
 
 
 @patch("orchestrator.fetch_repo_candidates")
@@ -280,13 +244,11 @@ def test_discover_repos_skips_already_contributed(
     _pr: MagicMock,
     _c: MagicMock,
     mock_fetch: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
     mock_fetch.return_value = [
         RepoInfo("a", "r0", "a/r0", "u", 1, None, None, "main"),
     ]
-    assert orchestrator.discover_repos_for_run(limit=5, token="t") == []
+    assert orchestrator.discover_repos_for_run(token="t") == []
 
 
 def test_main_requires_cursor_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -303,7 +265,6 @@ def test_run_cursor_phase_adds_model_and_force(
 ) -> None:
     monkeypatch.setenv("CURSOR_API_KEY", "k")
     monkeypatch.setenv("GITHUB_TOKEN", "g")
-    monkeypatch.setenv("IYNX_CURSOR_MODEL", "test-model")
     mock_docker.return_value = MagicMock(returncode=0)
     (tmp_path / "iynx.cursor-agent").write_text("#!/bin/bash\necho\n", encoding="utf-8")
     orchestrator.run_cursor_phase(tmp_path, "do work", force=True)
@@ -314,7 +275,7 @@ def test_run_cursor_phase_adds_model_and_force(
     bash_script = inner[1]
     assert "cursor-agent" in bash_script
     assert "--force" in bash_script
-    assert "test-model" in bash_script
+    assert orchestrator.CURSOR_AGENT_MODEL in bash_script
 
 
 @patch("orchestrator.discover_repos_for_run", return_value=[])
@@ -327,8 +288,24 @@ def test_main_runs_discovery_when_key_present(
     orchestrator.main()
 
 
+@patch("orchestrator.run_one_repo", return_value=False)
+@patch("orchestrator.discover_repos_for_run")
+def test_main_runs_only_first_repo(
+    mock_disc: MagicMock, mock_run: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CURSOR_API_KEY", "x")
+    mock_disc.return_value = [
+        RepoInfo("a", "r0", "a/r0", "u", 1, None, None, "main"),
+        RepoInfo("a", "r1", "a/r1", "u", 1, None, None, "main"),
+    ]
+    orchestrator.main()
+    mock_run.assert_called_once()
+    assert mock_run.call_args[0][0].name == "r0"
+
+
+@patch("orchestrator.find_first_suitable_open_issue", return_value=99)
 @patch("orchestrator.clone_repo", side_effect=RuntimeError("clone failed"))
-def test_run_one_repo_runtime_error_no_retry(_clone: MagicMock) -> None:
+def test_run_one_repo_runtime_error_no_retry(_clone: MagicMock, _issue: MagicMock) -> None:
     repo = RepoInfo(
         owner="o",
         name="n",
@@ -343,8 +320,9 @@ def test_run_one_repo_runtime_error_no_retry(_clone: MagicMock) -> None:
 
 
 @patch("orchestrator.time.sleep", return_value=None)
+@patch("orchestrator.find_first_suitable_open_issue", return_value=99)
 @patch("orchestrator.clone_repo", side_effect=subprocess.TimeoutExpired(cmd="git", timeout=1))
-def test_run_one_repo_timeout(_clone: MagicMock, _sleep: MagicMock) -> None:
+def test_run_one_repo_timeout(_clone: MagicMock, _issue: MagicMock, _sleep: MagicMock) -> None:
     repo = RepoInfo(
         owner="o",
         name="n",
@@ -356,3 +334,22 @@ def test_run_one_repo_timeout(_clone: MagicMock, _sleep: MagicMock) -> None:
         default_branch="main",
     )
     assert orchestrator.run_one_repo(repo, max_retries=1) is False
+
+
+@patch("orchestrator.find_first_suitable_open_issue", return_value=None)
+@patch("orchestrator.clone_repo")
+def test_run_one_repo_skips_clone_when_no_preflight_issue(
+    mock_clone: MagicMock, _issue: MagicMock
+) -> None:
+    repo = RepoInfo(
+        owner="o",
+        name="n",
+        full_name="o/n",
+        clone_url="https://github.com/o/n.git",
+        stars=1,
+        language=None,
+        description=None,
+        default_branch="main",
+    )
+    assert orchestrator.run_one_repo(repo, max_retries=1) is False
+    mock_clone.assert_not_called()

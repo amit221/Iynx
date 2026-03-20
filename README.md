@@ -1,5 +1,9 @@
 # Iynx — GitHub Contribution Agent
 
+<p align="center">
+  <img src="lynx_logo.png" alt="Cybernetic lynx head logo in blue and teal, with circuit patterns and a code symbol in one eye." width="200" />
+</p>
+
 An autonomous agent that discovers trendy GitHub repos, learns contribution guidelines, fixes issues, tests in Docker, and opens PRs. Uses **Cursor CLI** as the primary AI engine. All repo execution (clone, npm test, etc.) runs **inside Docker** for safety.
 
 ## Architecture
@@ -83,9 +87,8 @@ python run.py
 |----------|----------|-------------|
 | `CURSOR_API_KEY` | Yes | Cursor CLI API key |
 | `GITHUB_TOKEN` | Yes* | GitHub token (repo scope) for discovery and PRs |
-| `IYNX_REPO_LIMIT` | No | Max repos to fetch (default: 5) |
-| `IYNX_ONE_PR_PER_RUN` | No | Stop after first PR (default: 1) |
-| `IYNX_CURSOR_MODEL` | No | Cursor CLI model (default: `composer-2`). List models: `docker run --rm --entrypoint cursor-agent iynx-agent:latest --list-models` |
+
+Discovery rules (stars, age, pool size, CONTRIBUTING requirement, Cursor model, optional post-fix test re-run) live as **constants** in `src/orchestrator.py` — edit there to tune behavior.
 
 *Without `GITHUB_TOKEN`, discovery is rate-limited (60 req/hr) and PR creation will fail.
 
@@ -111,15 +114,16 @@ iynx/
 
 ## Flow
 
-1. **Discovery**: Search repos with `stars:>IYNX_MIN_STARS` and `created:>…` (default last 30 days), paginate a pool, then keep only repos with a CONTRIBUTING file (GitHub API) and none of your prior PRs to that repo (optional).
-2. **Clone**: `git clone` inside Docker into `workspace/owner-repo/`.
-3. **Bootstrap**: Generate `iynx.cursor-agent` from repo structure (Node/Python/Rust).
-4. **Phase 1**: Cursor writes `.iynx/summary.md` and `.iynx/context.json` (`test_command`, `lint_command`) from the contribution guide.
-5. **Phase 2**: Cursor picks a `good first issue` / `help wanted` issue.
-6. **Phase 3**: Cursor implements the fix using the summary, runs tests, does not commit `.iynx/`.
-7. **Verify** (optional): If `IYNX_VERIFY_TESTS=1`, Docker re-runs `test_command` from `context.json`.
-8. **Phase 4**: Cursor writes `.iynx/pr-draft.json` (`title`, `body`).
-9. **PR**: Host writes `.iynx/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
+1. **Discovery**: Search GitHub (defaults in `orchestrator.py`: e.g. stars, repo age, pool size), then keep repos that have a CONTRIBUTING file and none of your prior PRs to that repo.
+2. **Pick one repo**: The **first** repo in that filtered list is the only one processed this run.
+3. **Issue preflight** (host, GitHub API): Require at least one **open** issue labeled `good first issue` or `help wanted` (pull requests excluded). If none, the repo is skipped **without cloning**.
+4. **Clone**: `git clone` inside Docker into `workspace/owner-repo/`.
+5. **Bootstrap**: Generate `iynx.cursor-agent` from repo structure (Node/Python/Rust).
+6. **Phase 1**: Cursor writes `.iynx/summary.md` and `.iynx/context.json` (`test_command`, `lint_command`) from the contribution guide.
+7. **Phase 2 (implement)**: Cursor implements the fix for the pre-selected issue using the summary, runs tests, does not commit `.iynx/`.
+8. **Verify** (optional): If `VERIFY_TESTS_AFTER_FIX` is enabled in `orchestrator.py`, Docker re-runs `test_command` from `context.json`.
+9. **Phase 3 (PR draft)**: Cursor writes `.iynx/pr-draft.json` (`title`, `body`).
+10. **PR**: Host writes `.iynx/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
 
 ## Contributing
 

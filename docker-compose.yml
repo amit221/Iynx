@@ -1,0 +1,15 @@
+# Optional: for local development and testing
+services:
+  agent:
+    build: .
+    image: the-fixer-agent:latest
+    volumes:
+      - ./workspace:/home/dev/workspace
+    environment:
+      - CURSOR_API_KEY=${CURSOR_API_KEY}
+      - GH_TOKEN=${GITHUB_TOKEN}
+    # Keep config for Cursor auth (mount if needed)
+    # - ${HOME}/.config/cursor:/home/dev/.config/cursor:ro
+    working_dir: /home/dev/workspace
+    stdin_open: true
+    tty: true

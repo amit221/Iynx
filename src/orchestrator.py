@@ -63,7 +63,9 @@ def _docker_run_timeout_seconds() -> float:
         try:
             return float(raw)
         except ValueError:
-            logger.warning("Invalid IYNX_DOCKER_RUN_TIMEOUT %r; using %.0fs", raw, DOCKER_RUN_TIMEOUT)
+            logger.warning(
+                "Invalid IYNX_DOCKER_RUN_TIMEOUT %r; using %.0fs", raw, DOCKER_RUN_TIMEOUT
+            )
     return DOCKER_RUN_TIMEOUT
 
 
@@ -92,6 +94,7 @@ def _cursor_extra_cli_args() -> list[str]:
     if not extra:
         return []
     return shlex.split(extra, posix=True)
+
 
 # If True, Docker re-runs test_command from .iynx/context.json after the fix.
 VERIFY_TESTS_AFTER_FIX = False
@@ -381,9 +384,7 @@ def _maybe_verify_tests(dest: Path) -> bool:
         f"{helpers}"
         '_iynx_log "verify_tests: cwd=$(pwd) starting"\n'
         "cd /home/dev/workspace\n"
-        '_iynx_log "verify_tests: running test_command from context.json"\n'
-        + cmd.strip()
-        + "\n"
+        '_iynx_log "verify_tests: running test_command from context.json"\n' + cmd.strip() + "\n"
         '_iynx_log "verify_tests: success"\n',
         encoding="utf-8",
         newline="\n",
@@ -438,9 +439,7 @@ def _remove_workspace_dir(path: Path) -> None:
         shutil.rmtree(path, onexc=_rmtree_retry_chmod)
 
 
-def _docker_run_stream(
-    cmd: list[str], timeout: float | None = None
-) -> subprocess.CompletedProcess:
+def _docker_run_stream(cmd: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
     """Run docker with merged stdout/stderr streamed to the host logger line-by-line."""
     lines: list[str] = []
 

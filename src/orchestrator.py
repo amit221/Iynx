@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -22,12 +23,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bootstrap import write_bootstrap
-from discovery import RepoInfo, fetch_repo_candidates
+from discovery import RepoInfo, fetch_repo_by_full_name, fetch_repo_candidates
 from github_repo_checks import (
     find_first_suitable_open_issue,
     get_token_login,
     repo_has_contributing_guide,
     user_has_pr_to_repo,
+    validate_open_non_pr_issue,
 )
 
 # Project root (parent of src/)
@@ -35,6 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = PROJECT_ROOT / "workspace"
 SKILLS_DIR = PROJECT_ROOT / "skills"
 DOCKER_IMAGE = "iynx-agent:latest"
+DOCKER_RUN_TIMEOUT = 600.0
 
 # Discovery defaults (change here; no env vars).
 DISCOVERY_POOL_SIZE = 100
@@ -51,7 +54,79 @@ CURSOR_AGENT_MODEL = "composer-2"
 # If True, Docker re-runs test_command from .iynx/context.json after the fix.
 VERIFY_TESTS_AFTER_FIX = False
 
+# Optional: IYNX_TARGET_REPO=owner/name (or https://github.com/owner/repo) and IYNX_TARGET_ISSUE=N
 logger = logging.getLogger(__name__)
+
+
+def _parse_owner_repo_string(raw: str) -> tuple[str, str] | None:
+    s = raw.strip().rstrip("/")
+    if not s:
+        return None
+    if "github.com" in s:
+        # https://github.com/obra/superpowers or .../superpowers.git
+        path = s.split("github.com", 1)[-1].lstrip("/:")
+        parts = path.split("/")
+        if len(parts) >= 2:
+            owner, name = parts[0], parts[1].removesuffix(".git")
+            if owner and name:
+                return owner, name
+        return None
+    if s.count("/") == 1:
+        owner, name = s.split("/", 1)
+        owner, name = owner.strip(), name.strip()
+        if owner and name:
+            return owner, name
+    return None
+
+
+def parse_cli_target_repo_and_issue() -> tuple[tuple[str, str] | None, int | None]:
+    """
+    argv[1] = owner/repo or GitHub URL; argv[2] = optional issue number override.
+    """
+    if len(sys.argv) < 2:
+        return None, None
+    pair = _parse_owner_repo_string(sys.argv[1])
+    issue_override: int | None = None
+    if len(sys.argv) >= 3:
+        try:
+            issue_override = int(sys.argv[2].strip())
+        except ValueError:
+            logger.warning("Invalid issue number %r; ignoring override", sys.argv[2])
+    return pair, issue_override
+
+
+def resolve_target_repo_from_env_or_argv(
+    token: str | None,
+) -> tuple[RepoInfo | None, int | None]:
+    """
+    Explicit target from IYNX_TARGET_REPO (+ optional IYNX_TARGET_ISSUE) or sys.argv.
+
+    Returns (repo, issue_override) where issue_override may force a specific issue.
+    """
+    env_repo = os.environ.get("IYNX_TARGET_REPO", "").strip()
+    env_issue_raw = os.environ.get("IYNX_TARGET_ISSUE", "").strip()
+    argv_pair, argv_issue = parse_cli_target_repo_and_issue()
+
+    owner_name: tuple[str, str] | None = None
+    issue_override: int | None = None
+
+    if argv_pair:
+        owner_name = argv_pair
+        issue_override = argv_issue
+    elif env_repo:
+        owner_name = _parse_owner_repo_string(env_repo)
+        if env_issue_raw:
+            try:
+                issue_override = int(env_issue_raw)
+            except ValueError:
+                logger.warning("Invalid IYNX_TARGET_ISSUE %r; ignoring", env_issue_raw)
+
+    if not owner_name:
+        return None, None
+
+    owner, name = owner_name
+    repo = fetch_repo_by_full_name(owner, name, token=token)
+    return repo, issue_override
 
 
 def _read_json_file(path: Path) -> dict | None:
@@ -77,6 +152,25 @@ def load_pr_draft(iynx_dir: Path, issue_num: int) -> tuple[str, str]:
     if not isinstance(body, str) or not body.strip():
         body = default_body
     return title.strip(), body
+
+
+def load_chosen_issue(iynx_dir: Path) -> tuple[int | None, str | None]:
+    """
+    Read .iynx/chosen-issue.json from the issue-selection phase.
+
+    Expected shape: {"issue": <int or null>, "reason": "<string>"}
+    """
+    data = _read_json_file(iynx_dir / "chosen-issue.json")
+    if not data:
+        return None, None
+    issue = data.get("issue")
+    reason = data.get("reason")
+    reason_s = reason.strip() if isinstance(reason, str) and reason.strip() else None
+    if issue is None:
+        return None, reason_s
+    if isinstance(issue, int) and issue > 0:
+        return issue, reason_s
+    return None, reason_s
 
 
 def discover_repos_for_run(token: str | None) -> list[RepoInfo]:
@@ -185,14 +279,67 @@ def _remove_workspace_dir(path: Path) -> None:
         shutil.rmtree(path, onexc=_rmtree_retry_chmod)
 
 
+def _docker_run_stream(cmd: list[str], timeout: float = DOCKER_RUN_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run docker with merged stdout/stderr streamed to the host logger line-by-line."""
+    lines: list[str] = []
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+
+    def _drain() -> None:
+        if proc.stdout is None:
+            return
+        try:
+            for raw in proc.stdout:
+                line = raw.rstrip("\r\n")
+                lines.append(line)
+                if line:
+                    logger.info("[docker] %s", line)
+        except Exception:
+            pass
+
+    reader = threading.Thread(target=_drain, daemon=True)
+    reader.start()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=60)
+        except Exception:
+            pass
+        reader.join(timeout=30)
+        out = "\n".join(lines)
+        if out:
+            out += "\n"
+        raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=None) from None
+    reader.join(timeout=timeout + 60)
+    out = "\n".join(lines)
+    if out:
+        out += "\n"
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, "")
+
+
 def _docker_run(
     args: list[str],
     env: dict | None = None,
     mount: str | None = None,
     workdir: str | None = None,
     entrypoint: str | None = None,
+    stream_logs: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run a command inside the agent Docker container."""
+    """Run a command inside the agent Docker container.
+
+    When stream_logs is True (default), container stdout/stderr are merged and each
+    line is logged as INFO with an ``[docker]`` prefix so long Cursor phases stay visible.
+    """
     cmd = ["docker", "run", "--rm"]
     if entrypoint:
         cmd.extend(["--entrypoint", entrypoint])
@@ -205,13 +352,15 @@ def _docker_run(
             cmd.extend(["-e", f"{k}={v}"])
     cmd.append(DOCKER_IMAGE)
     cmd.extend(args)
+    if stream_logs:
+        return _docker_run_stream(cmd, timeout=DOCKER_RUN_TIMEOUT)
     return subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=600,
+        timeout=DOCKER_RUN_TIMEOUT,
     )
 
 
@@ -285,23 +434,50 @@ def load_skill_prompt() -> str:
     return ""
 
 
-def run_one_repo(repo: RepoInfo, max_retries: int = 2) -> bool:
+def run_one_repo(
+    repo: RepoInfo,
+    max_retries: int = 2,
+    *,
+    issue_override: int | None = None,
+) -> bool:
     """
     Full flow for one repo: clone, bootstrap, Cursor phases, PR.
     Returns True if PR was created, False otherwise.
     Retries with backoff on transient errors.
+
+    If issue_override is set, that open (non-PR) issue is used. Otherwise the host
+    only checks that at least one open non-PR issue exists; after clone and context
+    gathering, the AI picks the issue to fix (writes .iynx/chosen-issue.json).
     """
     skill = load_skill_prompt()
     dest = None
     token = os.environ.get("GITHUB_TOKEN")
-    issue_num = find_first_suitable_open_issue(repo.owner, repo.name, token)
-    if issue_num is None:
-        logger.warning(
-            "No open issue labeled 'good first issue' or 'help wanted'; skipping %s (no clone)",
+    issue_num: int | None
+    if issue_override is not None:
+        issue_num = validate_open_non_pr_issue(
+            repo.owner, repo.name, issue_override, token
+        )
+        if issue_num is None:
+            logger.warning(
+                "Issue #%s is not an open non-PR issue on %s (wrong number, closed, or a pull request); skipping (no clone)",
+                issue_override,
+                repo.full_name,
+            )
+            return False
+        logger.info("Preflight: %s — issue #%s (override)", repo.full_name, issue_num)
+    else:
+        issue_num = None
+        if find_first_suitable_open_issue(repo.owner, repo.name, token) is None:
+            logger.warning(
+                "No open (non-PR) issues found for %s; skipping (no clone). "
+                "Pass issue number as argv[2] or set IYNX_TARGET_ISSUE.",
+                repo.full_name,
+            )
+            return False
+        logger.info(
+            "Preflight: %s — at least one open issue; AI will choose after context",
             repo.full_name,
         )
-        return False
-    logger.info("Preflight: %s — using open issue #%s", repo.full_name, issue_num)
 
     for attempt in range(max_retries):
         try:
@@ -339,9 +515,60 @@ Repo: {repo.full_name}
 """
             r1 = run_cursor_phase(dest, phase1_prompt)
             if r1.returncode != 0:
-                logger.warning("Phase 1 failed: %s", r1.stderr)
+                logger.warning("Phase 1 failed: %s", r1.stderr or r1.stdout)
 
-            # Issue number was chosen via GitHub API before clone (avoids cloning repos with nothing to fix).
+            if issue_num is None:
+                qrepo = shlex.quote(repo.full_name)
+                phase2_prompt = f"""{skill}
+
+You are selecting ONE GitHub issue to fix in {repo.full_name}.
+
+Read .iynx/summary.md for how this repo expects contributions.
+
+List open items (newest first). Prefer JSON with PR discrimination:
+  gh issue list --repo {qrepo} --state open --limit 50 --json number,title,isPullRequest
+
+Only consider rows where isPullRequest is false. If your gh version omits isPullRequest, treat numbers where `gh pr view <n>` succeeds as pull requests and skip them.
+Optionally skim files in the repo to see if an issue is scoped enough to fix with a small change and verifiable tests.
+
+Choose one issue you can handle well in this run, or choose none if every open issue is a poor fit (too vague, needs product decision, security-sensitive, far too large, etc.).
+
+Write ONLY valid JSON to .iynx/chosen-issue.json (no markdown fence), UTF-8:
+{{"issue": <positive integer>, "reason": "<brief why this issue>"}}
+If none are appropriate:
+{{"issue": null, "reason": "<brief why not>"}}
+
+Do not commit this file.
+"""
+                r2 = run_cursor_phase(dest, phase2_prompt, force=True)
+                if r2.returncode != 0:
+                    logger.warning(
+                        "Phase 2 (issue selection) failed: %s", r2.stderr or r2.stdout
+                    )
+                picked, pick_reason = load_chosen_issue(iynx_dir)
+                if picked is None:
+                    extra = pick_reason or "No valid selection in .iynx/chosen-issue.json."
+                    logger.warning("No issue selected for %s — %s", repo.full_name, extra)
+                    return False
+                validated = validate_open_non_pr_issue(
+                    repo.owner, repo.name, picked, token
+                )
+                if validated is None:
+                    logger.warning(
+                        "AI picked #%s but it is not an open issue on %s; aborting",
+                        picked,
+                        repo.full_name,
+                    )
+                    return False
+                issue_num = validated
+                logger.info(
+                    "AI selected issue #%s for %s%s",
+                    issue_num,
+                    repo.full_name,
+                    f" — {pick_reason}" if pick_reason else "",
+                )
+
+            assert issue_num is not None
 
             # 4. Phase 3: Implement fix
             phase3_prompt = f"""{skill}
@@ -362,7 +589,7 @@ Create branch fix/issue-{issue_num} before committing.
 """
             r3 = run_cursor_phase(dest, phase3_prompt, force=True)
             if r3.returncode != 0:
-                logger.warning("Phase 3 failed: %s", r3.stderr)
+                logger.warning("Phase 3 failed: %s", r3.stderr or r3.stdout)
                 if attempt < max_retries - 1:
                     continue
                 return False
@@ -379,7 +606,7 @@ Do not commit this file.
 """
             r4 = run_cursor_phase(dest, phase4_prompt, force=True)
             if r4.returncode != 0:
-                logger.warning("Phase 4 failed: %s", r4.stderr)
+                logger.warning("Phase 4 failed: %s", r4.stderr or r4.stdout)
 
             branch = f"fix/issue-{issue_num}"
             pr_title, pr_body = load_pr_draft(iynx_dir, issue_num)
@@ -453,6 +680,21 @@ def main() -> None:
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
     token = os.environ.get("GITHUB_TOKEN")
+    explicit, issue_override = resolve_target_repo_from_env_or_argv(token)
+    if explicit is not None:
+        repo = explicit
+        if issue_override is not None:
+            logger.info(
+                "Explicit target %s (issue override #%s); skipping discovery",
+                repo.full_name,
+                issue_override,
+            )
+        else:
+            logger.info("Explicit target %s; skipping discovery", repo.full_name)
+        success_count = 1 if run_one_repo(repo, issue_override=issue_override) else 0
+        logger.info("Done. %d PR(s) created.", success_count)
+        return
+
     repos = discover_repos_for_run(token=token)
     logger.info("Discovered %d repo(s) after filters", len(repos))
     if not repos:

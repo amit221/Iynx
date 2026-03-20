@@ -13,7 +13,8 @@ show_missing = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "." so tests can import repo-root scripts (e.g. run.py); "src" for first-party packages.
+pythonpath = [".", "src"]
 
 [tool.ruff]
 target-version = "py310"

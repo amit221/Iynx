@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
 Entrypoint for the Iynx agent.
-Usage: python run.py
+
+Usage:
+  python run.py
+  python run.py owner/repo [issue_number]
+  python run.py https://github.com/owner/repo [issue_number]
+
+Or set IYNX_TARGET_REPO and optional IYNX_TARGET_ISSUE in the environment.
 """
 
 import os

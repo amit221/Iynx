@@ -140,6 +140,51 @@ def fetch_repo_candidates(
     return repos
 
 
+def fetch_repo_by_full_name(
+    owner: str,
+    name: str,
+    *,
+    token: str | None = None,
+) -> RepoInfo | None:
+    """
+    Fetch a single repository via GET /repos/{owner}/{name}.
+
+    Returns None if the repo is missing or the request fails.
+    """
+    token = token or os.environ.get("GITHUB_TOKEN")
+    url = f"https://api.github.com/repos/{owner}/{name}"
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.status_code == 404:
+            logger.warning("Repository not found: %s/%s", owner, name)
+            return None
+        r.raise_for_status()
+        data = r.json()
+    except requests.RequestException as e:
+        logger.warning("Failed to fetch repo %s/%s: %s", owner, name, e)
+        return None
+    if not isinstance(data, dict):
+        return None
+    owner_login = (data.get("owner") or {}).get("login")
+    repo_name = data.get("name")
+    if not owner_login or not repo_name:
+        return None
+    return RepoInfo(
+        owner=str(owner_login),
+        name=str(repo_name),
+        full_name=str(data.get("full_name") or f"{owner_login}/{repo_name}"),
+        clone_url=str(data.get("clone_url") or f"https://github.com/{owner_login}/{repo_name}.git"),
+        stars=int(data.get("stargazers_count") or 0),
+        language=data.get("language"),
+        description=data.get("description"),
+        default_branch=str(data.get("default_branch") or "main"),
+        created_at=_parse_created_at(data.get("created_at")),
+    )
+
+
 def fetch_trendy_repos(
     token: str | None = None,
     limit: int = 5,

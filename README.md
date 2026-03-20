@@ -79,6 +79,14 @@ set -a && source .env && set +a   # Linux/macOS
 
 # Run the agent (discovers repos, fixes one issue, opens PR)
 python run.py
+
+# While Docker runs (clone, Cursor, tests, `gh`), lines from the container are streamed
+# to the console as `INFO` log lines prefixed with `[docker]`.
+
+# Target one repo (and optional issue number). Without argv[2], the agent lists open issues and picks one it can handle (Phase 2).
+python run.py obra/superpowers
+python run.py obra/superpowers 849
+# Or: IYNX_TARGET_REPO=obra/superpowers IYNX_TARGET_ISSUE=849 python run.py
 ```
 
 ## Environment Variables
@@ -116,14 +124,15 @@ iynx/
 
 1. **Discovery**: Search GitHub (defaults in `orchestrator.py`: e.g. stars, repo age, pool size), then keep repos that have a CONTRIBUTING file and none of your prior PRs to that repo.
 2. **Pick one repo**: The **first** repo in that filtered list is the only one processed this run.
-3. **Issue preflight** (host, GitHub API): Require at least one **open** issue labeled `good first issue` or `help wanted` (pull requests excluded). If none, the repo is skipped **without cloning**.
+3. **Issue preflight** (host, GitHub API): Require at least one **open** issue (PRs excluded). If none, skip **without cloning**. This only checks that the list is non-empty.
 4. **Clone**: `git clone` inside Docker into `workspace/owner-repo/`.
 5. **Bootstrap**: Generate `iynx.cursor-agent` from repo structure (Node/Python/Rust).
 6. **Phase 1**: Cursor writes `.iynx/summary.md` and `.iynx/context.json` (`test_command`, `lint_command`) from the contribution guide.
-7. **Phase 2 (implement)**: Cursor implements the fix for the pre-selected issue using the summary, runs tests, does not commit `.iynx/`.
-8. **Verify** (optional): If `VERIFY_TESTS_AFTER_FIX` is enabled in `orchestrator.py`, Docker re-runs `test_command` from `context.json`.
-9. **Phase 3 (PR draft)**: Cursor writes `.iynx/pr-draft.json` (`title`, `body`).
-10. **PR**: Host writes `.iynx/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
+7. **Phase 2 (issue selection)**: Cursor lists open issues (`gh issue list`), picks **one** it can handle (or declines), and writes `.iynx/chosen-issue.json`. The host validates the pick against the API. **Override:** pass issue number as argv[2] or `IYNX_TARGET_ISSUE` to skip this phase.
+8. **Phase 3 (implement)**: Cursor implements the fix for the selected issue, runs tests, does not commit `.iynx/`.
+9. **Verify** (optional): If `VERIFY_TESTS_AFTER_FIX` is enabled in `orchestrator.py`, Docker re-runs `test_command` from `context.json`.
+10. **Phase 4 (PR draft)**: Cursor writes `.iynx/pr-draft.json` (`title`, `body`).
+11. **PR**: Host writes `.iynx/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
 
 ## Contributing
 

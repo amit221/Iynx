@@ -29,4 +29,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt
+      # Repo root (for run.py) + src/ (for orchestrator, discovery, …); matches pytest pythonpath in pyproject.toml.
       - run: pytest tests/ -v --cov=src --cov-report=term-missing
+        env:
+          PYTHONPATH: "${{ github.workspace }}:${{ github.workspace }}/src"

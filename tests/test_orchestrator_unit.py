@@ -57,6 +57,46 @@ def test_load_pr_draft_empty_title_body_fallback(tmp_path: Path) -> None:
     assert "Fixes #9" in body
 
 
+def test_load_chosen_issue_missing(tmp_path: Path) -> None:
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    assert orchestrator.load_chosen_issue(iynx) == (None, None)
+
+
+def test_load_chosen_issue_picked(tmp_path: Path) -> None:
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    (iynx / "chosen-issue.json").write_text(
+        json.dumps({"issue": 42, "reason": " small fix "}),
+        encoding="utf-8",
+    )
+    num, reason = orchestrator.load_chosen_issue(iynx)
+    assert num == 42
+    assert reason == "small fix"
+
+
+def test_load_chosen_issue_declined(tmp_path: Path) -> None:
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    (iynx / "chosen-issue.json").write_text(
+        json.dumps({"issue": None, "reason": "all too large"}),
+        encoding="utf-8",
+    )
+    assert orchestrator.load_chosen_issue(iynx) == (None, "all too large")
+
+
+def test_load_chosen_issue_invalid_number(tmp_path: Path) -> None:
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    (iynx / "chosen-issue.json").write_text(
+        json.dumps({"issue": 0, "reason": "bad"}),
+        encoding="utf-8",
+    )
+    num, reason = orchestrator.load_chosen_issue(iynx)
+    assert num is None
+    assert reason == "bad"
+
+
 def test_load_skill_prompt_missing_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(orchestrator, "SKILLS_DIR", tmp_path)
     assert orchestrator.load_skill_prompt() == ""
@@ -77,6 +117,7 @@ def test_docker_run_command_shape(mock_run: MagicMock) -> None:
         mount="host:guest",
         workdir="/w",
         entrypoint="bash",
+        stream_logs=False,
     )
     cmd = mock_run.call_args[0][0]
     assert cmd[0:2] == ["docker", "run"]

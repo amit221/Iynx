@@ -58,25 +58,22 @@ def test_find_first_suitable_open_issue_returns_first_non_pr(mock_get: MagicMock
     mock_get.return_value.raise_for_status = MagicMock()
     assert grc.find_first_suitable_open_issue("o", "r", "tok") == 7
     mock_get.assert_called_once()
-    assert mock_get.call_args[1]["params"]["labels"] == "good first issue"
+    params = mock_get.call_args[1]["params"]
+    assert "labels" not in params
+    assert params["state"] == "open"
 
 
 @patch("github_repo_checks.requests.get")
-def test_find_first_suitable_open_issue_falls_back_to_help_wanted(mock_get: MagicMock) -> None:
-    empty = MagicMock()
-    empty.json.return_value = []
-    empty.raise_for_status = MagicMock()
-    ok = MagicMock()
-    ok.json.return_value = [{"number": 3, "title": "help"}]
-    ok.raise_for_status = MagicMock()
-    mock_get.side_effect = [empty, ok]
-    assert grc.find_first_suitable_open_issue("o", "r", "tok") == 3
-    assert mock_get.call_count == 2
-    assert mock_get.call_args_list[1][1]["params"]["labels"] == "help wanted"
+def test_find_first_suitable_open_issue_none_when_only_prs(mock_get: MagicMock) -> None:
+    mock_get.return_value.json.return_value = [
+        {"number": 1, "pull_request": {"url": "x"}},
+    ]
+    mock_get.return_value.raise_for_status = MagicMock()
+    assert grc.find_first_suitable_open_issue("o", "r", "tok") is None
 
 
 @patch("github_repo_checks.requests.get")
 def test_find_first_suitable_open_issue_none_when_all_fail(mock_get: MagicMock) -> None:
     mock_get.side_effect = requests.RequestException("nope")
     assert grc.find_first_suitable_open_issue("o", "r", "tok") is None
-    assert mock_get.call_count == len(grc.SUITABLE_ISSUE_LABELS)
+    assert mock_get.call_count == 1

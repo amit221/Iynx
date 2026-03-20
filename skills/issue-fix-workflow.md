@@ -31,11 +31,12 @@ If no repo is given, assume the current workspace root or ask once for `owner/re
 
 ## 1. Issue Selection
 
+When the orchestrator asks you to choose (issue-selection phase), pick **one** open, non-PR issue you can complete in a single focused change, or decline with `issue: null` if none fit.
+
 Prefer issues that are:
 
 - Scoped to one package or module
 - Reproducible with unit tests or clear steps
-- Labeled `help wanted` or `good first issue` when available
 
 ## 2. Root Cause and Implementation
 

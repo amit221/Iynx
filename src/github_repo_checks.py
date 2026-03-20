@@ -11,12 +11,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Open issues with one of these labels are candidates before clone (REST Issues API).
-SUITABLE_ISSUE_LABELS = (
-    "good first issue",
-    "help wanted",
-)
-
 # Tried in order via Contents API (paths relative to repo root).
 CONTRIBUTING_PATHS = (
     "CONTRIBUTING.md",
@@ -71,42 +65,73 @@ def find_first_suitable_open_issue(
     name: str,
     token: str | None,
     *,
-    per_label_limit: int = 5,
+    per_page: int = 100,
 ) -> int | None:
     """
-    Return the number of an open issue labeled 'good first issue' or 'help wanted'.
+    Return one open issue number (not a PR), newest first.
 
-    Skips pull requests (the Issues API returns PRs too). Tries labels in order.
+    Used for preflight (repo has something to work on). The agent may pick a
+    different issue after clone via .iynx/chosen-issue.json.
     """
     headers = _api_headers(token)
-    cap = min(max(per_label_limit, 1), 100)
-    for label in SUITABLE_ISSUE_LABELS:
-        url = f"https://api.github.com/repos/{owner}/{name}/issues"
-        params = {
-            "state": "open",
-            "labels": label,
-            "per_page": cap,
-            "sort": "created",
-            "direction": "desc",
-        }
-        try:
-            r = requests.get(url, headers=headers, params=params, timeout=20)
-            r.raise_for_status()
-        except requests.RequestException as e:
-            logger.warning("Issue list failed for %s/%s label=%r: %s", owner, name, label, e)
+    cap = min(max(per_page, 1), 100)
+    url = f"https://api.github.com/repos/{owner}/{name}/issues"
+    params = {
+        "state": "open",
+        "per_page": cap,
+        "sort": "created",
+        "direction": "desc",
+    }
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=20)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning("Issue list failed for %s/%s: %s", owner, name, e)
+        return None
+    items = r.json()
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
             continue
-        items = r.json()
-        if not isinstance(items, list):
+        if item.get("pull_request") is not None:
             continue
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if item.get("pull_request") is not None:
-                continue
-            num = item.get("number")
-            if isinstance(num, int) and num > 0:
-                return num
+        num = item.get("number")
+        if isinstance(num, int) and num > 0:
+            return num
     return None
+
+
+def validate_open_non_pr_issue(
+    owner: str,
+    name: str,
+    issue_num: int,
+    token: str | None,
+) -> int | None:
+    """
+    Return issue_num if it is an open issue (not a pull request) on owner/name.
+    """
+    if issue_num < 1:
+        return None
+    headers = _api_headers(token)
+    url = f"https://api.github.com/repos/{owner}/{name}/issues/{issue_num}"
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        item = r.json()
+    except requests.RequestException as e:
+        logger.warning("Issue fetch failed for %s/%s#%s: %s", owner, name, issue_num, e)
+        return None
+    if not isinstance(item, dict):
+        return None
+    if str(item.get("state") or "").lower() != "open":
+        return None
+    if item.get("pull_request") is not None:
+        return None
+    num = item.get("number")
+    return int(num) if isinstance(num, int) and num > 0 else None
 
 
 def user_has_pr_to_repo(login: str, owner: str, name: str, token: str | None) -> bool:

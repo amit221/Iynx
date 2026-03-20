@@ -312,7 +312,9 @@ def _remove_workspace_dir(path: Path) -> None:
         shutil.rmtree(path, onexc=_rmtree_retry_chmod)
 
 
-def _docker_run_stream(cmd: list[str], timeout: float = DOCKER_RUN_TIMEOUT) -> subprocess.CompletedProcess:
+def _docker_run_stream(
+    cmd: list[str], timeout: float = DOCKER_RUN_TIMEOUT
+) -> subprocess.CompletedProcess:
     """Run docker with merged stdout/stderr streamed to the host logger line-by-line."""
     lines: list[str] = []
 
@@ -490,9 +492,7 @@ def run_one_repo(
     token = os.environ.get("GITHUB_TOKEN")
     issue_num: int | None
     if issue_override is not None:
-        issue_num = validate_open_non_pr_issue(
-            repo.owner, repo.name, issue_override, token
-        )
+        issue_num = validate_open_non_pr_issue(repo.owner, repo.name, issue_override, token)
         if issue_num is None:
             logger.warning(
                 "Issue #%s is not an open non-PR issue on %s (wrong number, closed, or a pull request); skipping (no clone)",
@@ -622,9 +622,7 @@ Do not commit this file.
                 _notify_progress(progress, repo.full_name, "phase2_issue_pick", "started")
                 r2 = run_cursor_phase(dest, phase2_prompt, force=True)
                 if r2.returncode != 0:
-                    logger.warning(
-                        "Phase 2 (issue selection) failed: %s", r2.stderr or r2.stdout
-                    )
+                    logger.warning("Phase 2 (issue selection) failed: %s", r2.stderr or r2.stdout)
                     _notify_progress(
                         progress,
                         repo.full_name,
@@ -647,9 +645,7 @@ Do not commit this file.
                         detail="no_issue_selected",
                     )
                     return False
-                validated = validate_open_non_pr_issue(
-                    repo.owner, repo.name, picked, token
-                )
+                validated = validate_open_non_pr_issue(repo.owner, repo.name, picked, token)
                 if validated is None:
                     logger.warning(
                         "AI picked #%s but it is not an open issue on %s; aborting",
@@ -789,9 +785,7 @@ git remote set-url origin "https://github.com/${{LOGIN}}/{repo.name}.git" && \
 git push -u origin {qb} && \
 gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} --body-file /home/dev/workspace/.iynx/pr-body.md --base {shlex.quote(repo.default_branch)} --head "${{LOGIN}}:{branch}"
 """
-            _notify_progress(
-                progress, repo.full_name, "pr_create", "started", issue=issue_num
-            )
+            _notify_progress(progress, repo.full_name, "pr_create", "started", issue=issue_num)
             r5 = _docker_run(
                 ["-c", pr_script],
                 entrypoint="bash",
@@ -814,9 +808,7 @@ gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} --body-fi
                     exit_code=r5.returncode,
                 )
                 return False
-            _notify_progress(
-                progress, repo.full_name, "pr_create", "completed", issue=issue_num
-            )
+            _notify_progress(progress, repo.full_name, "pr_create", "completed", issue=issue_num)
 
             logger.info("PR created for %s issue #%s", repo.full_name, issue_num)
             return True
@@ -887,9 +879,7 @@ def main() -> None:
         else:
             logger.info("Explicit target %s; skipping discovery", repo.full_name)
         _notify_progress(pw, repo.full_name, "target_resolve", "completed")
-        success_count = (
-            1 if run_one_repo(repo, issue_override=issue_override, progress=pw) else 0
-        )
+        success_count = 1 if run_one_repo(repo, issue_override=issue_override, progress=pw) else 0
         logger.info("Done. %d PR(s) created.", success_count)
         _notify_progress(
             pw,

@@ -447,7 +447,9 @@ def test_parse_cli_target_repo_and_issue_invalid_issue_number(
 
 
 @patch("orchestrator.fetch_repo_by_full_name")
-def test_resolve_target_from_env_invalid_issue(mock_fetch: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_target_from_env_invalid_issue(
+    mock_fetch: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(sys, "argv", ["prog"])
     monkeypatch.setenv("IYNX_TARGET_REPO", "env/o")
     monkeypatch.setenv("IYNX_TARGET_ISSUE", "not-int")

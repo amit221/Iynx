@@ -95,11 +95,16 @@ def fork_and_create_pr(
     # Create PR
     pr_result = run_gh(
         [
-            "pr", "create",
-            "--title", pr_title,
-            "--body", pr_body,
-            "--base", "main",
-            "--head", branch_name,
+            "pr",
+            "create",
+            "--title",
+            pr_title,
+            "--body",
+            pr_body,
+            "--base",
+            "main",
+            "--head",
+            branch_name,
         ],
         cwd=repo_path,
     )

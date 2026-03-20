@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from discovery import build_search_query, fetch_repo_candidates, _item_to_repo
+from discovery import _item_to_repo, build_search_query, fetch_repo_candidates
 
 
 def test_build_search_query_includes_stars_and_created():
@@ -75,6 +75,8 @@ def test_fetch_repo_candidates_paginates_until_pool(mock_page: MagicMock) -> Non
             ]
         },
     ]
-    out = fetch_repo_candidates(token="t", pool_size=35, min_stars=1, max_age_days=None, max_pages=5)
+    out = fetch_repo_candidates(
+        token="t", pool_size=35, min_stars=1, max_age_days=None, max_pages=5
+    )
     assert len(out) == 35
     assert mock_page.call_count == 2

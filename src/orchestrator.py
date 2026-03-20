@@ -46,7 +46,11 @@ def _env_int(key: str, default: int) -> int:
     raw = os.environ.get(key)
     if raw is None or not str(raw).strip():
         return default
-    return int(str(raw).strip())
+    try:
+        return int(str(raw).strip())
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r; using default %s", key, raw, default)
+        return default
 
 
 def _env_optional_int(key: str, default: str) -> int | None:
@@ -54,7 +58,11 @@ def _env_optional_int(key: str, default: str) -> int | None:
     raw = os.environ.get(key, default).strip()
     if not raw:
         return None
-    return int(raw)
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r; treating as unset (no filter)", key, raw)
+        return None
 
 
 def _read_json_file(path: Path) -> dict | None:
@@ -234,7 +242,15 @@ def clone_repo(repo: RepoInfo) -> Path:
 
     # Clone inside container; mount empty dir, clone into it (never run git on host)
     result = _docker_run(
-        ["clone", "--depth", "1", "--branch", repo.default_branch, repo.clone_url, "/home/dev/workspace"],
+        [
+            "clone",
+            "--depth",
+            "1",
+            "--branch",
+            repo.default_branch,
+            repo.clone_url,
+            "/home/dev/workspace",
+        ],
         env={"GIT_TERMINAL_PROMPT": "0"},
         mount=f"{dest.absolute()}:/home/dev/workspace",
         workdir="/home/dev/workspace",
@@ -300,7 +316,9 @@ def run_one_repo(repo: RepoInfo, max_retries: int = 2) -> bool:
         try:
             if attempt > 0:
                 backoff = min(30, 5 * (2**attempt))
-                logger.info("Retry %d/%d for %s in %ds", attempt + 1, max_retries, repo.full_name, backoff)
+                logger.info(
+                    "Retry %d/%d for %s in %ds", attempt + 1, max_retries, repo.full_name, backoff
+                )
                 time.sleep(backoff)
             # 1. Clone (in Docker)
             dest = clone_repo(repo)
@@ -436,7 +454,9 @@ gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} --body-fi
                 continue
             return False
         except Exception as e:
-            logger.exception("Unexpected error processing %s (attempt %d): %s", repo.full_name, attempt + 1, e)
+            logger.exception(
+                "Unexpected error processing %s (attempt %d): %s", repo.full_name, attempt + 1, e
+            )
             if attempt < max_retries - 1:
                 continue
             return False

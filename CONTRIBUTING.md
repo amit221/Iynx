@@ -25,6 +25,19 @@ Run the unit tests (no Docker required):
 pytest tests/ -v
 ```
 
+Coverage (uses `pyproject.toml` thresholds; requires `pytest-cov` from `requirements.txt`):
+
+```bash
+pytest tests/ -v --cov=src --cov-report=term-missing
+```
+
+Lint and format ([Ruff](https://docs.astral.sh/ruff/); config in `pyproject.toml`):
+
+```bash
+ruff check src tests run.py
+ruff format --check src tests run.py   # verify formatting; omit --check to auto-format
+```
+
 Add or update tests when you change behavior in `src/`.
 
 ## Pull requests

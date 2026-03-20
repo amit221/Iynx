@@ -10,7 +10,6 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import requests
 
@@ -26,16 +25,16 @@ class RepoInfo:
     full_name: str
     clone_url: str
     stars: int
-    language: Optional[str]
-    description: Optional[str]
+    language: str | None
+    description: str | None
     default_branch: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 def build_search_query(
     min_stars: int,
-    max_age_days: Optional[int],
-    language: Optional[str] = None,
+    max_age_days: int | None,
+    language: str | None = None,
 ) -> str:
     """
     Build the `q` string for GET /search/repositories (no network).
@@ -51,7 +50,7 @@ def build_search_query(
     return " ".join(parts)
 
 
-def _parse_created_at(raw: Optional[str]) -> Optional[datetime]:
+def _parse_created_at(raw: str | None) -> datetime | None:
     if not raw:
         return None
     try:
@@ -66,7 +65,7 @@ def _search_repositories_page(
     query: str,
     page: int,
     per_page: int,
-    token: Optional[str],
+    token: str | None,
 ) -> dict:
     url = "https://api.github.com/search/repositories"
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -110,11 +109,11 @@ def _item_to_repo(item: dict) -> RepoInfo:
 
 def fetch_repo_candidates(
     *,
-    token: Optional[str] = None,
+    token: str | None = None,
     pool_size: int = 50,
     min_stars: int = 50,
-    max_age_days: Optional[int] = 30,
-    language: Optional[str] = None,
+    max_age_days: int | None = 30,
+    language: str | None = None,
     max_pages: int = 5,
     per_page: int = 30,
 ) -> list[RepoInfo]:
@@ -142,11 +141,11 @@ def fetch_repo_candidates(
 
 
 def fetch_trendy_repos(
-    token: Optional[str] = None,
+    token: str | None = None,
     limit: int = 5,
     min_stars: int = 50,
-    max_age_days: Optional[int] = 30,
-    language: Optional[str] = None,
+    max_age_days: int | None = 30,
+    language: str | None = None,
     max_pages: int = 5,
     per_page: int = 30,
 ) -> list[RepoInfo]:

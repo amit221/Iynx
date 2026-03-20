@@ -5,7 +5,6 @@ GitHub REST helpers: CONTRIBUTING presence and whether the token user already op
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from urllib.parse import quote
 
 import requests
@@ -20,14 +19,14 @@ CONTRIBUTING_PATHS = (
 )
 
 
-def _api_headers(token: Optional[str]) -> dict[str, str]:
+def _api_headers(token: str | None) -> dict[str, str]:
     h = {"Accept": "application/vnd.github.v3+json"}
     if token:
         h["Authorization"] = f"Bearer {token}"
     return h
 
 
-def repo_has_contributing_guide(owner: str, name: str, token: Optional[str]) -> bool:
+def repo_has_contributing_guide(owner: str, name: str, token: str | None) -> bool:
     """True if any known CONTRIBUTING file exists at the default branch."""
     headers = _api_headers(token)
     for path in CONTRIBUTING_PATHS:
@@ -43,7 +42,7 @@ def repo_has_contributing_guide(owner: str, name: str, token: Optional[str]) -> 
     return False
 
 
-def get_token_login(token: Optional[str]) -> Optional[str]:
+def get_token_login(token: str | None) -> str | None:
     """Return login for the authenticated user, or None."""
     if not token:
         return None
@@ -61,7 +60,7 @@ def get_token_login(token: Optional[str]) -> Optional[str]:
         return None
 
 
-def user_has_pr_to_repo(login: str, owner: str, name: str, token: Optional[str]) -> bool:
+def user_has_pr_to_repo(login: str, owner: str, name: str, token: str | None) -> bool:
     """
     True if `login` has any pull request (open or closed) to owner/name.
 

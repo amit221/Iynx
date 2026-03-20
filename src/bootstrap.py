@@ -6,7 +6,6 @@ The bootstrap runs once inside the container to install deps (npm, pip, etc.).
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,11 @@ def detect_stack(repo_path: str) -> str:
 
     if (p / "package.json").exists():
         return "node"
-    if (p / "pyproject.toml").exists() or (p / "setup.py").exists() or (p / "requirements.txt").exists():
+    if (
+        (p / "pyproject.toml").exists()
+        or (p / "setup.py").exists()
+        or (p / "requirements.txt").exists()
+    ):
         return "python"
     if (p / "Cargo.toml").exists():
         return "rust"
@@ -113,7 +116,7 @@ def generate_bootstrap(repo_path: str) -> str:
     return _bootstrap_generic()
 
 
-def write_bootstrap(repo_path: str, output_path: Optional[str] = None) -> str:
+def write_bootstrap(repo_path: str, output_path: str | None = None) -> str:
     """
     Write .cursor-agent bootstrap to the repo (or custom path).
 

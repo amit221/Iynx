@@ -1,0 +1,43 @@
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+fail_under = 78
+show_missing = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# First-party roots for import sorting; include repo root script when running `ruff check` without paths.
+src = ["src", "tests"]
+extend-include = ["run.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501", # line length (formatter handles wrapping where it matters)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bootstrap", "discovery", "github_repo_checks", "orchestrator", "pr"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

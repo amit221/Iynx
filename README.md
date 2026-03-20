@@ -51,6 +51,13 @@ pip install -r requirements.txt
 # Run unit tests (no Docker)
 pytest tests/ -v
 
+# With coverage (threshold in pyproject.toml)
+pytest tests/ -v --cov=src --cov-report=term-missing
+
+# Lint / format (Ruff)
+ruff check src tests run.py
+ruff format src tests run.py
+
 # Copy env template and fill in secrets
 copy .env.example .env
 # Edit .env with CURSOR_API_KEY and GITHUB_TOKEN

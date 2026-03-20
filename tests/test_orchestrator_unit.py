@@ -35,8 +35,8 @@ def test_env_int_invalid_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_env_optional_int_invalid_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FIXER_TEST_AGE", "nope")
-    assert orchestrator._env_optional_int("FIXER_TEST_AGE", "30") is None
+    monkeypatch.setenv("IYNX_TEST_AGE", "nope")
+    assert orchestrator._env_optional_int("IYNX_TEST_AGE", "30") is None
 
 
 def test_env_optional_int_empty(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,22 +68,22 @@ def test_read_json_file_os_error(tmp_path: Path) -> None:
 
 
 def test_load_pr_draft_malformed_json_uses_defaults(tmp_path: Path) -> None:
-    fixer = tmp_path / ".fixer"
-    fixer.mkdir()
-    (fixer / "pr-draft.json").write_text("{", encoding="utf-8")
-    title, body = orchestrator.load_pr_draft(fixer, 5)
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    (iynx / "pr-draft.json").write_text("{", encoding="utf-8")
+    title, body = orchestrator.load_pr_draft(iynx, 5)
     assert "#5" in title
     assert "Fixes #5" in body
 
 
 def test_load_pr_draft_empty_title_body_fallback(tmp_path: Path) -> None:
-    fixer = tmp_path / ".fixer"
-    fixer.mkdir()
-    (fixer / "pr-draft.json").write_text(
+    iynx = tmp_path / ".iynx"
+    iynx.mkdir()
+    (iynx / "pr-draft.json").write_text(
         json.dumps({"title": "  ", "body": 123}),
         encoding="utf-8",
     )
-    title, body = orchestrator.load_pr_draft(fixer, 9)
+    title, body = orchestrator.load_pr_draft(iynx, 9)
     assert "#9" in title
     assert "Fixes #9" in body
 
@@ -113,7 +113,7 @@ def test_docker_run_command_shape(mock_run: MagicMock) -> None:
     assert cmd[0:2] == ["docker", "run"]
     assert "--rm" in cmd
     assert "bash" in cmd
-    assert "the-fixer-agent:latest" in cmd
+    assert "iynx-agent:latest" in cmd
     assert "-e" in cmd and "A=1" in cmd
     assert "B=" not in " ".join(cmd)
 
@@ -164,12 +164,12 @@ def test_clone_repo_failure(
 def test_maybe_verify_tests_runs_script(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("FIXER_VERIFY_TESTS", "1")
+    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
     d = tmp_path / "repo"
     d.mkdir()
-    fixer = d / ".fixer"
-    fixer.mkdir()
-    (fixer / "context.json").write_text(json.dumps({"test_command": "pytest -q"}), encoding="utf-8")
+    iynx = d / ".iynx"
+    iynx.mkdir()
+    (iynx / "context.json").write_text(json.dumps({"test_command": "pytest -q"}), encoding="utf-8")
     mock_docker.return_value = MagicMock(returncode=0, stderr="", stdout="ok")
     assert orchestrator._maybe_verify_tests(d) is True
     mock_docker.assert_called_once()
@@ -179,7 +179,7 @@ def test_maybe_verify_tests_runs_script(
 def test_maybe_verify_tests_skips_when_disabled(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("FIXER_VERIFY_TESTS", raising=False)
+    monkeypatch.delenv("IYNX_VERIFY_TESTS", raising=False)
     assert orchestrator._maybe_verify_tests(tmp_path) is True
     mock_docker.assert_not_called()
 
@@ -188,7 +188,7 @@ def test_maybe_verify_tests_skips_when_disabled(
 def test_maybe_verify_tests_no_context_json(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("FIXER_VERIFY_TESTS", "1")
+    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
     d = tmp_path / "repo"
     d.mkdir()
     assert orchestrator._maybe_verify_tests(d) is True
@@ -199,12 +199,12 @@ def test_maybe_verify_tests_no_context_json(
 def test_maybe_verify_tests_empty_test_command(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("FIXER_VERIFY_TESTS", "1")
+    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
     d = tmp_path / "repo"
     d.mkdir()
-    fixer = d / ".fixer"
-    fixer.mkdir()
-    (fixer / "context.json").write_text(json.dumps({"test_command": ""}), encoding="utf-8")
+    iynx = d / ".iynx"
+    iynx.mkdir()
+    (iynx / "context.json").write_text(json.dumps({"test_command": ""}), encoding="utf-8")
     assert orchestrator._maybe_verify_tests(d) is True
     mock_docker.assert_not_called()
 
@@ -213,12 +213,12 @@ def test_maybe_verify_tests_empty_test_command(
 def test_maybe_verify_tests_fails_return_false(
     mock_docker: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("FIXER_VERIFY_TESTS", "1")
+    monkeypatch.setenv("IYNX_VERIFY_TESTS", "1")
     d = tmp_path / "repo"
     d.mkdir()
-    fixer = d / ".fixer"
-    fixer.mkdir()
-    (fixer / "context.json").write_text(json.dumps({"test_command": "pytest"}), encoding="utf-8")
+    iynx = d / ".iynx"
+    iynx.mkdir()
+    (iynx / "context.json").write_text(json.dumps({"test_command": "pytest"}), encoding="utf-8")
     mock_docker.return_value = MagicMock(returncode=1, stderr="fail", stdout="")
     assert orchestrator._maybe_verify_tests(d) is False
 
@@ -248,8 +248,8 @@ def test_discover_repos_for_run_respects_limit(
     mock_fetch: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("FIXER_REQUIRE_CONTRIBUTING", "1")
-    monkeypatch.setenv("FIXER_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
+    monkeypatch.setenv("IYNX_REQUIRE_CONTRIBUTING", "1")
+    monkeypatch.setenv("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
     repos_data = [RepoInfo("a", f"r{i}", f"a/r{i}", "u", i, None, None, "main") for i in range(5)]
     mock_fetch.return_value = repos_data
     out = orchestrator.discover_repos_for_run(limit=2, token="tok")
@@ -264,7 +264,7 @@ def test_discover_repos_skips_without_contributing(
     mock_fetch: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("FIXER_REQUIRE_CONTRIBUTING", "1")
+    monkeypatch.setenv("IYNX_REQUIRE_CONTRIBUTING", "1")
     mock_fetch.return_value = [
         RepoInfo("a", "r0", "a/r0", "u", 1, None, None, "main"),
     ]
@@ -282,7 +282,7 @@ def test_discover_repos_skips_already_contributed(
     mock_fetch: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("FIXER_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
+    monkeypatch.setenv("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
     mock_fetch.return_value = [
         RepoInfo("a", "r0", "a/r0", "u", 1, None, None, "main"),
     ]
@@ -303,9 +303,9 @@ def test_run_cursor_phase_adds_model_and_force(
 ) -> None:
     monkeypatch.setenv("CURSOR_API_KEY", "k")
     monkeypatch.setenv("GITHUB_TOKEN", "g")
-    monkeypatch.setenv("FIXER_CURSOR_MODEL", "test-model")
+    monkeypatch.setenv("IYNX_CURSOR_MODEL", "test-model")
     mock_docker.return_value = MagicMock(returncode=0)
-    (tmp_path / "fixer.cursor-agent").write_text("#!/bin/bash\necho\n", encoding="utf-8")
+    (tmp_path / "iynx.cursor-agent").write_text("#!/bin/bash\necho\n", encoding="utf-8")
     orchestrator.run_cursor_phase(tmp_path, "do work", force=True)
     mock_docker.assert_called_once()
     inner = mock_docker.call_args[0][0]

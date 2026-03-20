@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve The Fixer. This project runs untrusted upstream code only inside Docker; keep that invariant in mind when changing behavior.
+Thanks for helping improve Iynx. This project runs untrusted upstream code only inside Docker; keep that invariant in mind when changing behavior.
 
 ## Development setup
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Entrypoint for the-fixer agent.
+Entrypoint for the Iynx agent.
 Usage: python run.py
 """
 

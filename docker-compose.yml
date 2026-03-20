@@ -2,7 +2,7 @@
 services:
   agent:
     build: .
-    image: the-fixer-agent:latest
+    image: iynx-agent:latest
     volumes:
       - ./workspace:/home/dev/workspace
     environment:

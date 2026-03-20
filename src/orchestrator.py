@@ -33,7 +33,7 @@ from github_repo_checks import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = PROJECT_ROOT / "workspace"
 SKILLS_DIR = PROJECT_ROOT / "skills"
-DOCKER_IMAGE = "the-fixer-agent:latest"
+DOCKER_IMAGE = "iynx-agent:latest"
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +75,10 @@ def _read_json_file(path: Path) -> dict | None:
     return None
 
 
-def load_pr_draft(fixer_dir: Path, issue_num: int) -> tuple[str, str]:
+def load_pr_draft(iynx_dir: Path, issue_num: int) -> tuple[str, str]:
     default_title = f"fix: resolve issue #{issue_num}"
     default_body = f"Fixes #{issue_num}\n\n(AI-assisted contribution)"
-    data = _read_json_file(fixer_dir / "pr-draft.json")
+    data = _read_json_file(iynx_dir / "pr-draft.json")
     if not data:
         return default_title, default_body
     title = data.get("title")
@@ -95,23 +95,23 @@ def discover_repos_for_run(limit: int, token: str | None) -> list[RepoInfo]:
     Search GitHub, then apply CONTRIBUTING and 'already contributed' filters.
     """
     pool_default = max(limit * 20, 50)
-    pool_size = min(_env_int("FIXER_DISCOVERY_POOL_SIZE", pool_default), 100)
-    min_stars = _env_int("FIXER_MIN_STARS", 50)
-    max_age_days = _env_optional_int("FIXER_MAX_REPO_AGE_DAYS", "30")
-    max_pages = _env_int("FIXER_DISCOVERY_MAX_PAGES", 5)
-    per_page = min(_env_int("FIXER_DISCOVERY_PER_PAGE", 30), 100)
+    pool_size = min(_env_int("IYNX_DISCOVERY_POOL_SIZE", pool_default), 100)
+    min_stars = _env_int("IYNX_MIN_STARS", 50)
+    max_age_days = _env_optional_int("IYNX_MAX_REPO_AGE_DAYS", "30")
+    max_pages = _env_int("IYNX_DISCOVERY_MAX_PAGES", 5)
+    per_page = min(_env_int("IYNX_DISCOVERY_PER_PAGE", 30), 100)
 
     candidates = fetch_repo_candidates(
         token=token,
         pool_size=pool_size,
         min_stars=min_stars,
         max_age_days=max_age_days,
-        language=os.environ.get("FIXER_LANGUAGE") or None,
+        language=os.environ.get("IYNX_LANGUAGE") or None,
         max_pages=max_pages,
         per_page=per_page,
     )
-    require_contrib = _env_bool("FIXER_REQUIRE_CONTRIBUTING", "1")
-    skip_contributed = _env_bool("FIXER_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
+    require_contrib = _env_bool("IYNX_REQUIRE_CONTRIBUTING", "1")
+    skip_contributed = _env_bool("IYNX_SKIP_REPOS_I_CONTRIBUTED_TO", "1")
     login = get_token_login(token) if skip_contributed and token else None
     if skip_contributed and token and not login:
         logger.warning("Could not resolve GitHub login; skipping 'already contributed' filter")
@@ -134,20 +134,20 @@ def discover_repos_for_run(limit: int, token: str | None) -> list[RepoInfo]:
 
 
 def _maybe_verify_tests(dest: Path) -> bool:
-    """Optional second run of test_command from .fixer/context.json inside Docker."""
-    if not _env_bool("FIXER_VERIFY_TESTS", "0"):
+    """Optional second run of test_command from .iynx/context.json inside Docker."""
+    if not _env_bool("IYNX_VERIFY_TESTS", "0"):
         return True
-    ctx = _read_json_file(dest / ".fixer" / "context.json")
+    ctx = _read_json_file(dest / ".iynx" / "context.json")
     if not ctx:
-        logger.warning("FIXER_VERIFY_TESTS=1 but no valid .fixer/context.json; skipping verify")
+        logger.warning("IYNX_VERIFY_TESTS=1 but no valid .iynx/context.json; skipping verify")
         return True
     cmd = ctx.get("test_command")
     if not isinstance(cmd, str) or not cmd.strip():
         logger.warning("No test_command in context.json; skipping verify")
         return True
-    fixer = dest / ".fixer"
-    fixer.mkdir(parents=True, exist_ok=True)
-    script = fixer / "verify-tests.sh"
+    iynx = dest / ".iynx"
+    iynx.mkdir(parents=True, exist_ok=True)
+    script = iynx / "verify-tests.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\ncd /home/dev/workspace\n" + cmd.strip() + "\n",
         encoding="utf-8",
@@ -157,7 +157,7 @@ def _maybe_verify_tests(dest: Path) -> bool:
     except OSError:
         pass
     r = _docker_run(
-        ["bash", "/home/dev/workspace/.fixer/verify-tests.sh"],
+        ["bash", "/home/dev/workspace/.iynx/verify-tests.sh"],
         env={
             "GH_TOKEN": os.environ.get("GITHUB_TOKEN"),
             "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
@@ -277,7 +277,7 @@ def run_cursor_phase(
         "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
     }
     args = ["-p", "--output-format", "text", "--trust"]
-    model = (os.environ.get("FIXER_CURSOR_MODEL") or "composer-2").strip() or "composer-2"
+    model = (os.environ.get("IYNX_CURSOR_MODEL") or "composer-2").strip() or "composer-2"
     args.extend(["--model", model])
     if force:
         args.append("--force")
@@ -285,7 +285,7 @@ def run_cursor_phase(
 
     # Run bootstrap then agent (bootstrap installs deps; agent does the work)
     quoted = " ".join(shlex.quote(a) for a in args)
-    bootstrap_cmd = f"bash fixer.cursor-agent 2>/dev/null; cursor-agent {quoted}"
+    bootstrap_cmd = f"bash iynx.cursor-agent 2>/dev/null; cursor-agent {quoted}"
     return _docker_run(
         ["-c", bootstrap_cmd],
         env=env,
@@ -324,8 +324,8 @@ def run_one_repo(repo: RepoInfo, max_retries: int = 2) -> bool:
             dest = clone_repo(repo)
             logger.info("Cloned %s to %s", repo.full_name, dest)
 
-            fixer_dir = dest / ".fixer"
-            fixer_dir.mkdir(parents=True, exist_ok=True)
+            iynx_dir = dest / ".iynx"
+            iynx_dir.mkdir(parents=True, exist_ok=True)
 
             # 2. Write bootstrap and Cursor rules (host writes our files; no repo code execution)
             write_bootstrap(str(dest))
@@ -333,12 +333,12 @@ def run_one_repo(repo: RepoInfo, max_retries: int = 2) -> bool:
             rules_dir.mkdir(parents=True, exist_ok=True)
             (rules_dir / "issue-fix-workflow.md").write_text(skill, encoding="utf-8")
 
-            # 3. Phase 1: CONTRIBUTING + structured context (agent writes .fixer/*)
+            # 3. Phase 1: CONTRIBUTING + structured context (agent writes .iynx/*)
             phase1_prompt = f"""Read CONTRIBUTING.md (or the repo's primary contribution doc). The repository has a contribution guide.
 
-Write two files under .fixer/ (create the directory if needed):
-1) .fixer/summary.md — concise markdown: how to contribute, PR conventions, branch naming, test command, lint/format commands.
-2) .fixer/context.json — valid JSON only, UTF-8, with this shape:
+Write two files under .iynx/ (create the directory if needed):
+1) .iynx/summary.md — concise markdown: how to contribute, PR conventions, branch naming, test command, lint/format commands.
+2) .iynx/context.json — valid JSON only, UTF-8, with this shape:
 {{"test_command":"exact shell command to run tests from repo root","lint_command":null or string}}
 
 Use the real test command from the repo (e.g. npm test, pytest, cargo test). If unknown, use null for test_command.
@@ -374,14 +374,14 @@ Pick ONE issue number that looks scoped and reproducible. Reply with just the is
 
 Implement a fix for issue #{issue_num} in {repo.full_name}.
 
-Read .fixer/summary.md and follow its contribution and PR conventions.
-Read .fixer/context.json and run test_command before committing; if tests fail, fix until they pass. Do not commit if tests fail.
-Do not add or commit anything under .fixer/ (keep it untracked).
+Read .iynx/summary.md and follow its contribution and PR conventions.
+Read .iynx/context.json and run test_command before committing; if tests fail, fix until they pass. Do not commit if tests fail.
+Do not add or commit anything under .iynx/ (keep it untracked).
 
 Steps:
 1. Read the issue: gh issue view {issue_num}
 2. Find root cause and implement a minimal fix
-3. Run test_command from .fixer/context.json (and lint if applicable)
+3. Run test_command from .iynx/context.json (and lint if applicable)
 4. Commit with a message matching repo conventions (e.g. fix: ... #{issue_num})
 
 Create branch fix/issue-{issue_num} before committing.
@@ -398,8 +398,8 @@ Create branch fix/issue-{issue_num} before committing.
                 return False
 
             # 6. Phase 4: PR title/body JSON
-            phase4_prompt = f"""Read .fixer/summary.md, gh issue view {issue_num}, and the latest commit message/diff.
-Write ONLY valid JSON to .fixer/pr-draft.json (no markdown fence) with keys "title" and "body".
+            phase4_prompt = f"""Read .iynx/summary.md, gh issue view {issue_num}, and the latest commit message/diff.
+Write ONLY valid JSON to .iynx/pr-draft.json (no markdown fence) with keys "title" and "body".
 The PR must follow repository PR conventions from the summary. Body should include: summary of changes, how to test, and a line "Fixes #{issue_num}".
 Do not commit this file.
 """
@@ -408,8 +408,8 @@ Do not commit this file.
                 logger.warning("Phase 4 failed: %s", r4.stderr)
 
             branch = f"fix/issue-{issue_num}"
-            pr_title, pr_body = load_pr_draft(fixer_dir, issue_num)
-            (fixer_dir / "pr-body.md").write_text(pr_body, encoding="utf-8")
+            pr_title, pr_body = load_pr_draft(iynx_dir, issue_num)
+            (iynx_dir / "pr-body.md").write_text(pr_body, encoding="utf-8")
 
             qb = shlex.quote(branch)
             pr_title_q = shlex.quote(pr_title)
@@ -423,7 +423,7 @@ LOGIN=$(gh api user -q .login) && \
 git remote set-url origin "https://github.com/${{LOGIN}}/{repo.name}.git" && \
 (git remote set-url upstream {qu} 2>/dev/null || git remote add upstream {qu}) && \
 git push -u origin {qb} && \
-gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} --body-file /home/dev/workspace/.fixer/pr-body.md --base {shlex.quote(repo.default_branch)} --head "${{LOGIN}}:{branch}"
+gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} --body-file /home/dev/workspace/.iynx/pr-body.md --base {shlex.quote(repo.default_branch)} --head "${{LOGIN}}:{branch}"
 """
             r5 = _docker_run(
                 ["-c", pr_script],
@@ -478,7 +478,7 @@ def main() -> None:
 
     WORKSPACE.mkdir(parents=True, exist_ok=True)
 
-    limit = _env_int("FIXER_REPO_LIMIT", 5)
+    limit = _env_int("IYNX_REPO_LIMIT", 5)
     token = os.environ.get("GITHUB_TOKEN")
     repos = discover_repos_for_run(limit=limit, token=token)
     logger.info("Discovered %d repo(s) after filters", len(repos))
@@ -488,7 +488,7 @@ def main() -> None:
         success = run_one_repo(repo)
         if success:
             success_count += 1
-        if success_count >= 1 and _env_bool("FIXER_ONE_PR_PER_RUN", "1"):
+        if success_count >= 1 and _env_bool("IYNX_ONE_PR_PER_RUN", "1"):
             break
 
     logger.info("Done. %d PR(s) created.", success_count)

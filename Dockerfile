@@ -1,4 +1,4 @@
-# GitHub Contribution Agent - Isolated environment for Cursor CLI + gh + git
+# Iynx — GitHub Contribution Agent — isolated environment for Cursor CLI + gh + git
 # Based on https://github.com/cleaton/cli-agent-container
 
 FROM debian:bookworm-slim

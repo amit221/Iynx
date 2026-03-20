@@ -1,1 +1,1 @@
-# The Fixer - GitHub Contribution Agent
+# Iynx - GitHub Contribution Agent

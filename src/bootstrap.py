@@ -120,17 +120,17 @@ def write_bootstrap(repo_path: str, output_path: str | None = None) -> str:
     """
     Write .cursor-agent bootstrap to the repo (or custom path).
 
-    Uses fixer.cursor-agent to match cli-agent-container's *.cursor-agent glob.
+    Uses iynx.cursor-agent to match cli-agent-container's *.cursor-agent glob.
 
     Args:
         repo_path: Path to cloned repo root.
-        output_path: Optional. Default: repo_path/fixer.cursor-agent
+        output_path: Optional. Default: repo_path/iynx.cursor-agent
 
     Returns:
         Path to written file.
     """
     content = generate_bootstrap(repo_path)
-    out = Path(output_path or os.path.join(repo_path, "fixer.cursor-agent"))
+    out = Path(output_path or os.path.join(repo_path, "iynx.cursor-agent"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(content, encoding="utf-8")
     out.chmod(0o755)

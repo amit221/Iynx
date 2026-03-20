@@ -1,4 +1,4 @@
-# The Fixer — GitHub Contribution Agent
+# Iynx — GitHub Contribution Agent
 
 An autonomous agent that discovers trendy GitHub repos, learns contribution guidelines, fixes issues, tests in Docker, and opens PRs. Uses **Cursor CLI** as the primary AI engine. All repo execution (clone, npm test, etc.) runs **inside Docker** for safety.
 
@@ -39,7 +39,7 @@ Then **Developer: Reload Window** so rules/skills load. Update with `git pull` i
 
 ```bash
 # Clone and enter project
-cd the-fixer
+cd iynx
 
 # Create venv and install deps
 python -m venv .venv
@@ -63,7 +63,7 @@ copy .env.example .env
 # Edit .env with CURSOR_API_KEY and GITHUB_TOKEN
 
 # Build Docker image
-docker build -t the-fixer-agent:latest .
+docker build -t iynx-agent:latest .
 ```
 
 ## Usage
@@ -83,16 +83,16 @@ python run.py
 |----------|----------|-------------|
 | `CURSOR_API_KEY` | Yes | Cursor CLI API key |
 | `GITHUB_TOKEN` | Yes* | GitHub token (repo scope) for discovery and PRs |
-| `FIXER_REPO_LIMIT` | No | Max repos to fetch (default: 5) |
-| `FIXER_ONE_PR_PER_RUN` | No | Stop after first PR (default: 1) |
-| `FIXER_CURSOR_MODEL` | No | Cursor CLI model (default: `composer-2`). List models: `docker run --rm --entrypoint cursor-agent the-fixer-agent:latest --list-models` |
+| `IYNX_REPO_LIMIT` | No | Max repos to fetch (default: 5) |
+| `IYNX_ONE_PR_PER_RUN` | No | Stop after first PR (default: 1) |
+| `IYNX_CURSOR_MODEL` | No | Cursor CLI model (default: `composer-2`). List models: `docker run --rm --entrypoint cursor-agent iynx-agent:latest --list-models` |
 
 *Without `GITHUB_TOKEN`, discovery is rate-limited (60 req/hr) and PR creation will fail.
 
 ## Project Structure
 
 ```
-the-fixer/
+iynx/
 ├── Dockerfile           # Cursor CLI + gh + git + jq
 ├── docker-compose.yml   # Optional local dev
 ├── src/
@@ -111,15 +111,15 @@ the-fixer/
 
 ## Flow
 
-1. **Discovery**: Search repos with `stars:>FIXER_MIN_STARS` and `created:>…` (default last 30 days), paginate a pool, then keep only repos with a CONTRIBUTING file (GitHub API) and none of your prior PRs to that repo (optional).
+1. **Discovery**: Search repos with `stars:>IYNX_MIN_STARS` and `created:>…` (default last 30 days), paginate a pool, then keep only repos with a CONTRIBUTING file (GitHub API) and none of your prior PRs to that repo (optional).
 2. **Clone**: `git clone` inside Docker into `workspace/owner-repo/`.
-3. **Bootstrap**: Generate `fixer.cursor-agent` from repo structure (Node/Python/Rust).
-4. **Phase 1**: Cursor writes `.fixer/summary.md` and `.fixer/context.json` (`test_command`, `lint_command`) from the contribution guide.
+3. **Bootstrap**: Generate `iynx.cursor-agent` from repo structure (Node/Python/Rust).
+4. **Phase 1**: Cursor writes `.iynx/summary.md` and `.iynx/context.json` (`test_command`, `lint_command`) from the contribution guide.
 5. **Phase 2**: Cursor picks a `good first issue` / `help wanted` issue.
-6. **Phase 3**: Cursor implements the fix using the summary, runs tests, does not commit `.fixer/`.
-7. **Verify** (optional): If `FIXER_VERIFY_TESTS=1`, Docker re-runs `test_command` from `context.json`.
-8. **Phase 4**: Cursor writes `.fixer/pr-draft.json` (`title`, `body`).
-9. **PR**: Host writes `.fixer/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
+6. **Phase 3**: Cursor implements the fix using the summary, runs tests, does not commit `.iynx/`.
+7. **Verify** (optional): If `IYNX_VERIFY_TESTS=1`, Docker re-runs `test_command` from `context.json`.
+8. **Phase 4**: Cursor writes `.iynx/pr-draft.json` (`title`, `body`).
+9. **PR**: Host writes `.iynx/pr-body.md`; `gh repo fork`, push, `gh pr create --body-file …`.
 
 ## Contributing
 

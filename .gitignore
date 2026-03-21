@@ -16,5 +16,7 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Superpowers plugin / workflow plans (local copies, not source of truth)
-docs/superpowers/
+# Superpowers plugin / workflow plans (local copies); design specs under specs/ are tracked
+docs/superpowers/**
+!docs/superpowers/specs/
+!docs/superpowers/specs/**

@@ -36,7 +36,7 @@ Local `.iynx-run-progress.jsonl` aggregates are **out of scope** for this featur
 | `IYNX_STATS_BRANCH_REGEX` | Optional | Python regex for head ref; default `^fix/issue-\d+$`. |
 | `IYNX_STATS_AUTHOR` | Optional | GitHub login to filter as PR author; default = **authenticated user** from `GET /user`. |
 
-**Consistency rule:** If `IYNX_STATS_LABEL` is unset, use `IYNX_PR_LABEL`. If neither env var is set, **`--label` on the CLI** satisfies the label requirement. If **no** label is available from env or CLI, the stats command must **fail fast** with a clear message (no silent empty results).
+**Consistency rule:** If `IYNX_STATS_LABEL` is unset, use `IYNX_PR_LABEL`. If neither env var is set, **`--label` on the CLI** satisfies the label requirement. If **no** label is available from env or CLI, the stats command must **fail fast** with a clear message (no silent empty results). **Empty string** for any of these counts as **unset** (same as missing).
 
 **Label matching:** GitHub search uses the label **name** as in the UI; matching is **exact** for the `label:` qualifier (case and spelling must match the label applied at PR creation).
 
@@ -118,7 +118,7 @@ Stable fields (semver: additive only until v2):
    Paginate (`per_page` 100, follow `Link` header until done or `--max`).
 
    **GitHub Search hard cap:** At most **1,000** **items** can be **retrieved** per query, even if `total_count` is higher. Store `search_total_count` from the API and set `search_truncated` to **true** when `total_count` **>** 1,000. When `total_count` is **≤** 1,000, all matching search items are retrievable (`search_truncated` is **false**). Paginate until all fetchable items are read (or `--max` stops early). Apply head-ref regex **after** fetching. v1 does **not** require sharding queries (e.g. by date or repo); document as a known limitation and optional future `--since` or split strategies.
-3. **Enrich (head ref):** For each search item, if the payload already includes the **head branch name** needed for regex matching (see GitHub REST “Issues” search item shape: `pull_request` URL and/or repository linkage), use it. **Otherwise** call **`GET /repos/{owner}/{repo}/pulls/{pull_number}`** once for that item. **Decision rule:** After a one-time spike against live API responses in the plan, lock “field present → no GET; else GET” in code comments and tests. Requirement: **correct head ref** for filtering.
+3. **Enrich (PR details):** Issue search items are **not** full PR objects. To bucket **merged** vs **closed-unmerged** vs **open**, each candidate must expose **`state`**, **`merged_at`**, and **`head.ref`** (branch name). **Rule:** After the spike, either (a) prove these fields are always present on the search payload for `is:pr` hits and document the exact JSON paths, or (b) call **`GET /repos/{owner}/{repo}/pulls/{pull_number}`** for **every** candidate (simplest, highest API cost; respect `--max` on **search items fetched** before issuing GETs, or define order in the plan). **Wrong split risk:** using GET only when head ref is missing but not when `merged_at` is missing is **not allowed** — merge classification must not be guessed from search items alone unless the spike proves fields exist.
 4. **Filter:** Keep items whose **head ref** `ref` (branch name) matches `IYNX_STATS_BRANCH_REGEX`.
 5. **Bucket:**
    - `merged` — `merged_at` is non-null.
@@ -156,4 +156,5 @@ Stable fields (semver: additive only until v2):
 ## Open points for implementation plan only
 
 - Exact package/module layout and console script name (`python -m …`).
-- Spike: confirm which fields on `/search/issues` items carry head ref; lock the enrich rule from section 3 accordingly.
+- Spike: confirm which fields on `/search/issues` items carry `head.ref`, `state`, and `merged_at`; if any are missing for PRs, use per-PR **`GET /pulls`** for all candidates (or document partial GET strategy with tests proving correct bucketing).
+- Document the final **`q` string** (including open/closed scope), **`sort`/`order`**, and deduplication keys if two searches are used.

@@ -20,6 +20,16 @@ def test_build_search_query_no_created_when_max_age_none():
     assert "language:python" in q
 
 
+def test_build_search_query_multiple_languages_uses_or_group():
+    q = build_search_query(
+        min_stars=10,
+        max_age_days=None,
+        language=("javascript", "typescript", "python"),
+    )
+    assert "stars:>10" in q
+    assert "(language:javascript OR language:typescript OR language:python)" in q
+
+
 def test_item_to_repo_parses_created_at():
     item = {
         "owner": {"login": "a"},

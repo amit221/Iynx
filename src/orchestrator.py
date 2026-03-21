@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bootstrap import write_bootstrap
-from discovery import RepoInfo, fetch_repo_by_full_name, fetch_repo_candidates
+from discovery import RepoInfo, fetch_repo_by_full_name, fetch_repos_with_open_issues
 from github_repo_checks import (
     find_first_suitable_open_issue,
     get_token_login,
@@ -44,12 +44,12 @@ DOCKER_IMAGE = "iynx-agent:latest"
 DOCKER_RUN_TIMEOUT = 3600.0
 
 # Discovery defaults (change here; no env vars).
+# Repos are found via open-issue search per language (any open issue, not label-specific).
 DISCOVERY_POOL_SIZE = 100
-DISCOVERY_MIN_STARS = 50
-DISCOVERY_MAX_REPO_AGE_DAYS = 30  # None = no created:> filter
 DISCOVERY_MAX_PAGES = 5
 DISCOVERY_PER_PAGE = 30
-DISCOVERY_LANGUAGE: str | None = None
+# GitHub language slugs for issue search (one query per language per page).
+DISCOVERY_LANGUAGES: tuple[str, ...] = ("javascript", "typescript", "python")
 REQUIRE_CONTRIBUTING_GUIDE = True
 SKIP_REPOS_WITH_USER_PRS = True
 
@@ -327,17 +327,16 @@ def load_chosen_issue(iynx_dir: Path) -> tuple[int | None, str | None]:
 
 def discover_repos_for_run(token: str | None) -> list[RepoInfo]:
     """
-    Search GitHub, then apply CONTRIBUTING and 'already contributed' filters.
+    Find repos that have open issues (issue search per language), then apply
+    CONTRIBUTING and 'already contributed' filters.
 
     Returns every candidate in the search pool that passes filters (see module constants).
     """
     pool_size = min(DISCOVERY_POOL_SIZE, 100)
-    candidates = fetch_repo_candidates(
+    candidates = fetch_repos_with_open_issues(
         token=token,
         pool_size=pool_size,
-        min_stars=DISCOVERY_MIN_STARS,
-        max_age_days=DISCOVERY_MAX_REPO_AGE_DAYS,
-        language=DISCOVERY_LANGUAGE,
+        languages=DISCOVERY_LANGUAGES,
         max_pages=DISCOVERY_MAX_PAGES,
         per_page=min(DISCOVERY_PER_PAGE, 100),
     )

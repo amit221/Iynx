@@ -279,7 +279,7 @@ def test_rmtree_retry_chmod_non_permission_raises() -> None:
         orchestrator._rmtree_retry_chmod(MagicMock(), "/p", ValueError("other"))
 
 
-@patch("orchestrator.fetch_repo_candidates")
+@patch("orchestrator.fetch_repos_with_open_issues")
 @patch("orchestrator.repo_has_contributing_guide", return_value=True)
 @patch("orchestrator.user_has_pr_to_repo", return_value=False)
 @patch("orchestrator.get_token_login", return_value="alice")
@@ -296,7 +296,7 @@ def test_discover_repos_for_run_returns_all_filtered(
     assert out[0].name == "r0"
 
 
-@patch("orchestrator.fetch_repo_candidates")
+@patch("orchestrator.fetch_repos_with_open_issues")
 @patch("orchestrator.repo_has_contributing_guide", return_value=False)
 def test_discover_repos_skips_without_contributing(
     mock_contrib: MagicMock,
@@ -308,7 +308,7 @@ def test_discover_repos_skips_without_contributing(
     assert orchestrator.discover_repos_for_run(token="t") == []
 
 
-@patch("orchestrator.fetch_repo_candidates")
+@patch("orchestrator.fetch_repos_with_open_issues")
 @patch("orchestrator.repo_has_contributing_guide", return_value=True)
 @patch("orchestrator.user_has_pr_to_repo", return_value=True)
 @patch("orchestrator.get_token_login", return_value="u")
@@ -577,7 +577,7 @@ def test_resolve_target_prefers_argv_over_env(
     mock_fetch.assert_called_once_with("cli", "repo", token="t")
 
 
-@patch("orchestrator.fetch_repo_candidates")
+@patch("orchestrator.fetch_repos_with_open_issues")
 @patch("orchestrator.repo_has_contributing_guide", return_value=True)
 @patch("orchestrator.user_has_pr_to_repo", return_value=False)
 @patch("orchestrator.get_token_login", return_value=None)

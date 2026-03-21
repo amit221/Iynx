@@ -7,12 +7,93 @@ import pytest
 import requests
 
 from discovery import (
+    RepoInfo,
+    _owner_repo_from_repository_url,
     _parse_created_at,
+    _search_issues_page,
     _search_repositories_page,
+    build_open_issues_search_query,
     fetch_repo_by_full_name,
     fetch_repo_candidates,
+    fetch_repos_with_open_issues,
     fetch_trendy_repos,
 )
+
+
+def test_build_open_issues_search_query_any_open_issue() -> None:
+    q = build_open_issues_search_query("python")
+    assert q == "is:issue is:open language:python"
+    assert "good" not in q.lower()
+    assert "label" not in q.lower()
+
+
+def test_build_open_issues_search_query_empty_language() -> None:
+    with pytest.raises(ValueError):
+        build_open_issues_search_query("  ")
+
+
+def test_owner_repo_from_repository_url() -> None:
+    assert _owner_repo_from_repository_url("https://api.github.com/repos/acme/widget") == (
+        "acme",
+        "widget",
+    )
+    assert _owner_repo_from_repository_url(None) is None
+    assert _owner_repo_from_repository_url("https://example.com/x") is None
+
+
+@patch("discovery.time.sleep", return_value=None)
+@patch("discovery.requests.get")
+def test_search_issues_page_retries(mock_get: MagicMock, _sleep: MagicMock) -> None:
+    ok = MagicMock()
+    ok.json.return_value = {"items": []}
+    ok.raise_for_status = MagicMock()
+    mock_get.side_effect = [
+        requests.RequestException("fail"),
+        ok,
+    ]
+    out = _search_issues_page("is:issue is:open language:python", 1, 30, "tok")
+    assert out == {"items": []}
+    assert mock_get.call_count == 2
+
+
+@patch("discovery.fetch_repo_by_full_name")
+@patch("discovery._search_issues_page")
+def test_fetch_repos_with_open_issues_dedupes_and_hydrates(
+    mock_issues: MagicMock,
+    mock_fetch_repo: MagicMock,
+) -> None:
+    mock_issues.return_value = {
+        "items": [
+            {"repository_url": "https://api.github.com/repos/o/r1"},
+            {"repository_url": "https://api.github.com/repos/o/r1"},
+            {"repository_url": "https://api.github.com/repos/o/r2"},
+        ]
+    }
+
+    def _repo(owner: str, name: str, **_k: object) -> RepoInfo:
+        return RepoInfo(
+            owner=owner,
+            name=name,
+            full_name=f"{owner}/{name}",
+            clone_url=f"https://github.com/{owner}/{name}.git",
+            stars=1,
+            language=None,
+            description=None,
+            default_branch="main",
+        )
+
+    mock_fetch_repo.side_effect = lambda o, n, token=None: _repo(o, n)
+
+    out = fetch_repos_with_open_issues(
+        token="t",
+        pool_size=5,
+        languages=("javascript",),
+        max_pages=1,
+        per_page=30,
+    )
+    assert len(out) == 2
+    assert {r.full_name for r in out} == {"o/r1", "o/r2"}
+    assert mock_fetch_repo.call_count == 2
 
 
 def test_parse_created_at_none() -> None:

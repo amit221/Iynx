@@ -36,7 +36,7 @@ Local `.iynx-run-progress.jsonl` aggregates are **out of scope** for this featur
 | `IYNX_STATS_BRANCH_REGEX` | Optional | Python regex for head ref; default `^fix/issue-\d+$`. |
 | `IYNX_STATS_AUTHOR` | Optional | GitHub login to filter as PR author; default = **authenticated user** from `GET /user`. |
 
-**Consistency rule:** If `IYNX_STATS_LABEL` is unset, use `IYNX_PR_LABEL`. If neither is set, the stats command must **fail fast** with a clear message (no silent empty results).
+**Consistency rule:** If `IYNX_STATS_LABEL` is unset, use `IYNX_PR_LABEL`. If neither env var is set, **`--label` on the CLI** satisfies the label requirement. If **no** label is available from env or CLI, the stats command must **fail fast** with a clear message (no silent empty results).
 
 **Label matching:** GitHub search uses the label **name** as in the UI; matching is **exact** for the `label:` qualifier (case and spelling must match the label applied at PR creation).
 
@@ -91,14 +91,18 @@ Stable fields (semver: additive only until v2):
     "owner/name": { "total": 0, "merged": 0, "open": 0, "closed_unmerged": 0 }
   },
   "limits": {
-    "search_results_returned": 0,
+    "search_total_count": 0,
+    "search_items_fetched": 0,
     "search_truncated": false
   }
 }
 ```
 
+- **`branch_pattern_source`:** Where the branch regex came from: **`default`** (built-in `^fix/issue-\d+$`), **`env`** (`IYNX_STATS_BRANCH_REGEX`), or **`cli`** (`--branch-regex`).
 - **`by_repo`:** Omit or `{}` when empty; include when non-empty.
-- **`limits.search_truncated`:** Set `true` when GitHub Search returns **1,000** results (the **hard cap** per query). In that case **totals are incomplete**; document in README and print a **warning** on stderr for `table`/`card`/`share`/`json`.
+- **`limits.search_total_count`:** The **`total_count`** field from the first Search API response (total matches for the query on GitHub, may exceed what can be retrieved).
+- **`limits.search_items_fetched`:** Number of **search result items actually retrieved** from the API across all pages (each item is a PR candidate **before** head-ref regex filtering). Maximum **1,000** (GitHub’s per-query retrieval cap).
+- **`limits.search_truncated`:** Set `true` **iff** `search_total_count` **>** `1,000` (GitHub will not return more than 1,000 items; counts may omit older PRs). Set `false` when `search_total_count` ≤ 1,000 (all matching search hits were fetchable). Emit a **warning** on stderr for all formats when `true`; document in README.
 
 ---
 
@@ -109,7 +113,7 @@ Stable fields (semver: additive only until v2):
    `is:pr author:<login> label:<label>`  
    Paginate (`per_page` 100, follow `Link` header until done or `--max`).
 
-   **GitHub Search hard cap:** Each query returns at most **1,000** total results. If `total_count` from the API is **> 1,000**, set `limits.search_truncated` to `true` and emit a warning; counts reflect only the first 1,000 candidates (still filtered by branch regex). v1 does **not** require sharding queries (e.g. by date or repo); document as a known limitation and optional future `--since` or split strategies.
+   **GitHub Search hard cap:** At most **1,000** **items** can be **retrieved** per query, even if `total_count` is higher. Store `search_total_count` from the API and set `search_truncated` to **true** when `total_count` **>** 1,000. When `total_count` is **≤** 1,000, all matching search items are retrievable (`search_truncated` is **false**). Paginate until all fetchable items are read (or `--max` stops early). Apply head-ref regex **after** fetching. v1 does **not** require sharding queries (e.g. by date or repo); document as a known limitation and optional future `--since` or split strategies.
 3. **Enrich:** Search results may not always include full head ref detail in one payload. For each candidate, use **`GET /repos/{owner}/{repo}/pulls/{pull_number}`** or pull from search item if `pull_request` + head ref is reliably present — **implementation plan** should pick one path and document; requirement is **correct head ref** for filtering.
 4. **Filter:** Keep items whose **head ref** `ref` (branch name) matches `IYNX_STATS_BRANCH_REGEX`.
 5. **Bucket:**
@@ -126,8 +130,7 @@ Stable fields (semver: additive only until v2):
 - **Stdlib only:** Unicode box-drawing + optional ANSI; no new required dependencies.
 - **Default width:** Target ~**40–56** columns for screenshot readability; optional auto-detect terminal width.
 - **Content:** Title (e.g. `iynx · PR stats`), filter one-liner (label + branch pattern), large aligned counts for merged / open / closed / total.
-- **`--no-color`:** Plain text for copy-paste or terminals without ANSI. Respect **`NO_COLOR`** (non-empty) the same as `--no-color` for CI and snapshot tests.
-- **`NO_COLOR`:** When set, card renderer must not emit ANSI (same as `--no-color`).
+- **Color:** Emit ANSI colors when stdout is a TTY unless disabled. **`--no-color`** or a non-empty **`NO_COLOR`** environment variable disables ANSI (including for `table` where color is used). Use this for CI and golden snapshot tests.
 
 ---
 

@@ -937,6 +937,8 @@ Do not commit this file.
             pr_title_q = shlex.quote(pr_title)
             upstream_url = f"https://github.com/{repo.owner}/{repo.name}.git"
             qu = shlex.quote(upstream_url)
+            pr_label = os.environ.get("IYNX_PR_LABEL", "").strip()
+            label_suffix = f" --label {shlex.quote(pr_label)} " if pr_label else " "
             pr_helpers = _docker_trace_helpers()
             pr_script = (
                 f"{pr_helpers}"
@@ -959,6 +961,7 @@ Do not commit this file.
                 '_iynx_log "pr_create: gh pr create"\n'
                 f"gh pr create --repo {shlex.quote(repo.full_name)} --title {pr_title_q} "
                 f"--body-file /home/dev/workspace/.iynx/pr-body.md --base {shlex.quote(repo.default_branch)} "
+                f"{label_suffix}"
                 f'--head "${{LOGIN}}:{branch}"\n'
             )
             _notify_progress(progress, repo.full_name, "pr_create", "started", issue=issue_num)

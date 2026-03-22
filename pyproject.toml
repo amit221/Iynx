@@ -21,7 +21,7 @@ target-version = "py310"
 line-length = 100
 # First-party roots for import sorting; include repo root script when running `ruff check` without paths.
 src = ["src", "tests"]
-extend-include = ["run.py", "stats.py"]
+extend-include = ["run.py", "stats.py", "reddit_gap_run.py"]
 
 [tool.ruff.lint]
 select = [
@@ -37,7 +37,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["bootstrap", "discovery", "github_repo_checks", "orchestrator", "pr", "pr_stats"]
+known-first-party = ["bootstrap", "discovery", "github_repo_checks", "orchestrator", "pr", "pr_stats", "reddit_gap"]
 
 [tool.ruff.format]
 quote-style = "double"

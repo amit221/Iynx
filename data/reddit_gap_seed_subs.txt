@@ -1,6 +1,0 @@
-# One subreddit per line (no r/ prefix required). Lines starting with # are ignored.
-# Replace with subs you care about; defaults are illustrative.
-
-resumes
-nonprofit
-explainlikeimfive

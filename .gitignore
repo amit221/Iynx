@@ -1,6 +1,5 @@
 workspace/
 .iynx-run-progress.jsonl
-reddit_gap_out/
 .env
 *.pyc
 __pycache__/

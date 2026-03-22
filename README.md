@@ -155,14 +155,6 @@ Use **`IYNX_PR_LABEL`** when running the agent so new PRs get the same label and
 
 **Exit codes:** `0` success; `1` config/usage; `2` GitHub HTTP/network error after retries.
 
-### Reddit AI gap scorer (optional)
-
-Experimental batch job: scores subreddits from a seed list for **AI-shaped post demand** vs **AI tool discourse** (lexicon MVP). Writes `reddit_gap_out/gap.json`, `directory.csv`, and `index.html`. Uses Reddit’s public JSON endpoints—set a descriptive **`REDDIT_USER_AGENT`** (see `.env.example`) and be polite with **`REDDIT_GAP_SLEEP_SEC`** (default 2s between calls). Design: `docs/superpowers/specs/2026-03-22-reddit-ai-gap-opportunity-design.md`.
-
-```bash
-python reddit_gap_run.py --seed data/reddit_gap_seed_subs.txt --out reddit_gap_out --max-posts 100
-```
-
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -184,8 +176,6 @@ python reddit_gap_run.py --seed data/reddit_gap_seed_subs.txt --out reddit_gap_o
 | `IYNX_CURSOR_PERMISSIVE` | No | If `1` (default), passes `--yolo`, `--approve-mcps`, and `--sandbox disabled` to `cursor-agent` so headless runs do not stall on approvals (see [Cursor CLI parameters](https://cursor.com/docs/cli/reference/parameters)). Set `0` for stricter behavior; phases that used `--force` still append it when permissive is off |
 | `IYNX_CURSOR_MODEL` | No | Overrides the default Cursor model (`composer-2` in code) |
 | `IYNX_CURSOR_EXTRA_ARGS` | No | Extra `cursor-agent` flags (space-separated, POSIX-quoted), appended after built-in flags |
-| `REDDIT_USER_AGENT` | No* | *Required in practice* for Reddit gap scorer: identifies your client to `reddit.com` |
-| `REDDIT_GAP_SLEEP_SEC` | No | Seconds between Reddit HTTP calls (default `2`) |
 
 Discovery rules (stars, age, pool size, CONTRIBUTING requirement, optional post-fix test re-run) live as **constants** in `src/orchestrator.py` — edit there to tune behavior; the Cursor model default can be overridden with `IYNX_CURSOR_MODEL`.
 

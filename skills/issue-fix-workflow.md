@@ -130,6 +130,8 @@ gh pr checkout <PR_NUMBER>
 
 ### Phase 2 — Fetch review text into markdown
 
+`python pr_review.py` **only writes the markdown file** — it does **not** commit or push. Pushing updated commits is **Phase 3**.
+
 From the **Iynx** project root (or any cwd if you use `--output` / env):
 
 ```bash

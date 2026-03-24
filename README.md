@@ -157,7 +157,7 @@ Use **`IYNX_PR_LABEL`** when running the agent so new PRs get the same label and
 
 ### PR review follow-up (GitHub)
 
-After maintainers comment on an open PR, dump review threads into a **local markdown file** for an agent (or you) to implement fixes. Uses **`gh` only** (no direct GitHub REST in this tool). Install and authenticate [GitHub CLI](https://cli.github.com/) on the host.
+After maintainers comment on an open PR, dump review threads into a **local markdown file** for an agent (or you) to implement fixes. Uses **`gh` only** (no direct GitHub REST in this tool). **It does not run `git commit` or `git push`** — you (or the agent) must commit fixes and `git push origin <pr-head-branch>` so the PR updates. Install and authenticate [GitHub CLI](https://cli.github.com/) on the host.
 
 **Default output:** `<contribution-repo>/.iynx/pr-review-feedback.md` — only if that path is **gitignored** in the target repo; otherwise pass **`--output`** or set **`IYNX_PR_REVIEW_FEEDBACK_PATH`**. **Do not commit** that file.
 

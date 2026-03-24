@@ -192,8 +192,7 @@ def build_markdown(
     )
     has_inline = bool(pull_comments)
     has_issue = any(
-        isinstance(c.get("body"), str) and (c.get("body") or "").strip()
-        for c in issue_comments
+        isinstance(c.get("body"), str) and (c.get("body") or "").strip() for c in issue_comments
     )
 
     if reviews:
@@ -263,8 +262,7 @@ def build_markdown(
 def fetch_pr_json(view_arg: str, owner: str, repo: str) -> dict[str, Any]:
     """Call `gh pr view`. Use a full GitHub PR URL as `view_arg` OR pass number + owner/repo."""
     fields = (
-        "title,url,number,headRefName,baseRefName,baseRepository,headRepository,"
-        "body,author,state"
+        "title,url,number,headRefName,baseRefName,baseRepository,headRepository,body,author,state"
     )
     va = view_arg.strip()
     if _PR_URL_RE.match(va):
@@ -290,9 +288,7 @@ def fetch_json_list(endpoint: str) -> list[dict[str, Any]]:
             ]
         )
         if proc.returncode != 0:
-            raise GhError(
-                proc.stderr.strip() or proc.stdout.strip() or f"gh api {endpoint} failed"
-            )
+            raise GhError(proc.stderr.strip() or proc.stdout.strip() or f"gh api {endpoint} failed")
         chunk = json.loads(proc.stdout)
         if not isinstance(chunk, list):
             raise GhError(f"expected list from gh api {endpoint}")
@@ -320,7 +316,7 @@ def resolve_output_path(
 
     Raises ValueError for exit-1 cases (stderr to be printed by caller).
     """
-    override = (output_cli or (env_path or "").strip() or None)
+    override = output_cli or (env_path or "").strip() or None
     if override:
         p = Path(override).expanduser().resolve()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -425,7 +421,9 @@ def main(argv: list[str] | None = None) -> int:
 
         md = build_markdown(pr_data, reviews, pull_comments, issue_comments)
     except FileNotFoundError:
-        print("gh executable not found; install GitHub CLI and ensure it is on PATH.", file=sys.stderr)
+        print(
+            "gh executable not found; install GitHub CLI and ensure it is on PATH.", file=sys.stderr
+        )
         return 2
     except GhError as e:
         print(str(e), file=sys.stderr)
@@ -442,11 +440,27 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote review feedback: {out_path}")
     print(f"PR: {pr_data.get('url', '—')}")
+    head_ref = pr_data.get("headRefName")
+    if isinstance(head_ref, str) and head_ref:
+        print(
+            f"This tool does not commit or push. After you fix and commit, push the PR branch:\n"
+            f"  git push origin {head_ref}"
+        )
+    else:
+        print(
+            "This tool does not commit or push. After you fix and commit, push your PR branch "
+            "(same ref as the PR head on GitHub)."
+        )
     if repo_root_path and out_path.is_relative_to(repo_root_path):
         br = current_branch(repo_root_path)
         if br:
             print(f"Current branch (in {repo_root_path}): {br}")
-        print("Next: address feedback, run tests, commit, push to the PR branch.")
+            if isinstance(head_ref, str) and head_ref and br != head_ref:
+                print(
+                    f"Warning: branch '{br}' differs from PR head '{head_ref}'. "
+                    "Checkout the PR head before pushing or the PR will not update.",
+                    file=sys.stderr,
+                )
 
     return 0
 

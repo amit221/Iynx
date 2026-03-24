@@ -293,9 +293,7 @@ def compute_stats(
 
     max_fetchable = min(open_total, 1000) + min(closed_total, 1000)
     user_capped = (
-        max_items is not None
-        and fetched_total >= max_items
-        and fetched_total < max_fetchable
+        max_items is not None and fetched_total >= max_items and fetched_total < max_fetchable
     )
 
     kept: list[tuple[str, dict[str, Any]]] = []
@@ -601,8 +599,7 @@ def run(argv: list[str] | None = None) -> int:
     lim = result.limits
     if lim.get("search_truncated"):
         print(
-            "warning: GitHub Search returned more than 1,000 matches; "
-            "counts may omit older PRs.",
+            "warning: GitHub Search returned more than 1,000 matches; counts may omit older PRs.",
             file=sys.stderr,
         )
     if lim.get("user_capped"):

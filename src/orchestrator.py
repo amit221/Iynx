@@ -195,7 +195,12 @@ def _notify_progress(
     if issue is not None:
         parts.append(f"issue={issue}")
     if detail:
-        parts.append(detail)
+        # Full `detail` is stored in JSONL; keep console `[iynx]` lines short.
+        if len(detail) > 500:
+            one_line = detail[:500].replace("\n", " ").strip()
+            parts.append(f"{one_line} ... [detail {len(detail)} chars; see JSONL]")
+        else:
+            parts.append(detail)
     if exit_code is not None:
         parts.append(f"exit_code={exit_code}")
     logger.info("[iynx] %s", " ".join(parts))
@@ -208,6 +213,31 @@ def _notify_progress(
             detail=detail,
             exit_code=exit_code,
         )
+
+
+# Cap for progress JSONL `detail` on subprocess failures (e.g. gh pr create stderr).
+_PROGRESS_SUBPROCESS_DETAIL_MAX = 4000
+
+
+def _progress_detail_from_subprocess(
+    result: subprocess.CompletedProcess[str],
+    *,
+    max_chars: int | None = None,
+) -> str:
+    """Merge stderr/stdout from a failed CompletedProcess for progress JSONL."""
+    limit = max_chars if max_chars is not None else _PROGRESS_SUBPROCESS_DETAIL_MAX
+    err = (result.stderr or "").strip()
+    out = (result.stdout or "").strip()
+    if err and out and err not in out:
+        combined = f"{err}\n---\n{out}"
+    else:
+        combined = err or out
+    combined = combined.replace("\r\n", "\n").strip()
+    if not combined:
+        return "no_output"
+    if len(combined) <= limit:
+        return combined
+    return f"...(truncated, {len(combined)} chars total)\n" + combined[-limit:]
 
 
 def _parse_owner_repo_string(raw: str) -> tuple[str, str] | None:
@@ -977,13 +1007,15 @@ Do not commit this file.
                 workdir="/home/dev/workspace",
             )
             if r5.returncode != 0:
-                logger.error("PR creation failed: %s", r5.stderr or r5.stdout)
+                pr_fail_detail = _progress_detail_from_subprocess(r5)
+                logger.error("PR creation failed: %s", pr_fail_detail)
                 _notify_progress(
                     progress,
                     repo.full_name,
                     "pr_create",
                     "failed",
                     issue=issue_num,
+                    detail=pr_fail_detail,
                     exit_code=r5.returncode,
                 )
                 return False

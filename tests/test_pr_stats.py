@@ -30,18 +30,20 @@ def test_build_search_q_without_label() -> None:
 
 
 def test_repo_from_repository_url() -> None:
-    assert pr_stats._repo_from_repository_url(
-        "https://api.github.com/repos/foo/bar"
-    ) == ("foo", "bar")
+    assert pr_stats._repo_from_repository_url("https://api.github.com/repos/foo/bar") == (
+        "foo",
+        "bar",
+    )
 
 
 def test_repo_from_issue_item_fallbacks() -> None:
     assert pr_stats._repo_from_issue_item(
         {"number": 1, "html_url": "https://github.com/foo/bar/pull/99"}
     ) == ("foo", "bar")
-    assert pr_stats._repo_from_issue_item(
-        {"number": 1, "repository": {"full_name": "a/b"}}
-    ) == ("a", "b")
+    assert pr_stats._repo_from_issue_item({"number": 1, "repository": {"full_name": "a/b"}}) == (
+        "a",
+        "b",
+    )
     assert pr_stats._repo_from_issue_item({"number": 1}) is None
 
 
@@ -163,7 +165,9 @@ def test_result_to_json_omits_empty_by_repo() -> None:
     assert "by_repo" not in d
 
 
-def test_json_output_schema(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_json_output_schema(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "tok")
     monkeypatch.setenv("NO_COLOR", "1")
 

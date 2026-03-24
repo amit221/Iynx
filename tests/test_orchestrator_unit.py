@@ -38,6 +38,29 @@ def test_read_json_file_os_error(tmp_path: Path) -> None:
         assert orchestrator._read_json_file(p) is None
 
 
+def test_progress_detail_from_subprocess_no_output() -> None:
+    p = subprocess.CompletedProcess(["x"], 1, stdout="", stderr="")
+    assert orchestrator._progress_detail_from_subprocess(p) == "no_output"
+
+
+def test_progress_detail_from_subprocess_prefers_stderr_when_distinct() -> None:
+    p = subprocess.CompletedProcess(["x"], 1, stdout="out", stderr="gh: label not found")
+    assert orchestrator._progress_detail_from_subprocess(p) == "gh: label not found\n---\nout"
+
+
+def test_progress_detail_from_subprocess_stdout_only() -> None:
+    p = subprocess.CompletedProcess(["x"], 1, stdout="docker log line\n", stderr="")
+    assert orchestrator._progress_detail_from_subprocess(p) == "docker log line"
+
+
+def test_progress_detail_from_subprocess_truncates() -> None:
+    long_out = "a" * 100
+    p = subprocess.CompletedProcess(["x"], 1, stdout=long_out, stderr="")
+    d = orchestrator._progress_detail_from_subprocess(p, max_chars=20)
+    assert d.startswith("...(truncated, 100 chars total)")
+    assert d.endswith("a" * 20)
+
+
 def test_load_pr_draft_malformed_json_uses_defaults(tmp_path: Path) -> None:
     iynx = tmp_path / ".iynx"
     iynx.mkdir()

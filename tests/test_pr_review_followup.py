@@ -12,9 +12,7 @@ import pr_review_followup as prf
 
 
 def test_parse_pr_ref_url() -> None:
-    v, o, r, n = prf.parse_pr_ref(
-        "https://github.com/foo/bar/pull/99", None, None
-    )
+    v, o, r, n = prf.parse_pr_ref("https://github.com/foo/bar/pull/99", None, None)
     assert v == "https://github.com/foo/bar/pull/99"
     assert o == "foo" and r == "bar" and n == 99
 
@@ -42,9 +40,7 @@ def test_parse_pr_ref_invalid() -> None:
 
 
 def test_owner_repo_from_pr_json() -> None:
-    o, r = prf.owner_repo_from_pr_json(
-        {"baseRepository": {"nameWithOwner": "cli/cli"}}
-    )
+    o, r = prf.owner_repo_from_pr_json({"baseRepository": {"nameWithOwner": "cli/cli"}})
     assert o == "cli" and r == "cli"
 
 
@@ -86,7 +82,9 @@ def test_resolve_output_with_override(tmp_path: Path) -> None:
     assert p.is_file()
 
 
-def test_resolve_output_default_requires_gitignore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_output_default_requires_gitignore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     subprocess_run = __import__("subprocess").run
     import subprocess
@@ -112,9 +110,7 @@ def test_resolve_output_default_when_ignored(tmp_path: Path) -> None:
         return subprocess.CompletedProcess(cmd, 1, "", "err")
 
     with patch("pr_review_followup.subprocess.run", side_effect=fake_run):
-        p, _ = prf.resolve_output_path(
-            output_cli=None, env_path=None, repo_root=tmp_path
-        )
+        p, _ = prf.resolve_output_path(output_cli=None, env_path=None, repo_root=tmp_path)
     assert p.name == "pr-review-feedback.md"
     assert ".iynx" in str(p)
 

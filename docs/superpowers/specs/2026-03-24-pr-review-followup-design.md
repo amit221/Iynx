@@ -72,7 +72,7 @@ Define a **repeatable workflow** for iterating on an **open pull request** after
 |------|------|
 | **Default path** | `<contribution-repo-root>/.iynx/pr-review-feedback.md` |
 | **Commit policy** | **Never commit** this file. It is local agent scratch only. |
-| **If `.iynx/` is not ignored** | Helper **must** support `--output PATH` (or env `IYNX_PR_REVIEW_FEEDBACK_PATH`) to write outside the repo or to a user-chosen ignored path; if default path would be **tracked** (`git check-ignore -q` fails), helper exits **`1`** with stderr explaining `--output` unless `--output` is provided. |
+| **If default path is not gitignored** | Helper **must** support `--output PATH` (or env `IYNX_PR_REVIEW_FEEDBACK_PATH`). After resolving `<contribution-repo-root>`, if the target file path is **not ignored** by that repo (`git check-ignore -q` run from repo root on the relative path **fails**), helper exits **`1`** with stderr explaining `--output` unless `--output` is provided. (Normative rule: **ignored or override** — do not infer from `git ls-files` / “tracked” alone.) |
 | **Skill doc** | States the same default path and “do not commit” rule so operators are not expected to infer from each upstream repo’s `.gitignore`. |
 
 Rationale: aligns with other agent-facing artifacts under `.iynx/` while avoiding accidental leakage of review dumps in PR commits.
@@ -113,13 +113,13 @@ Rationale: aligns with other agent-facing artifacts under `.iynx/` while avoidin
 | Argument / env | Behavior |
 |----------------|----------|
 | PR URL or `--repo owner/repo --pr N` | Resolve PR; fail fast if ambiguous. |
-| `--repo-root PATH` | If set, validate path exists and is a git repo (`git rev-parse`); if not → exit **`1`**, stderr explains. If valid, use it as `<contribution-repo-root>` for default output path. If unset, cwd is used when it is a git repo; otherwise print clone/checkout instructions (exit **`0`** or **`1`** depending on whether PR resolution alone succeeded — document: “instructions only” mode). |
-| `--output PATH` | Override output file path (see Phase 2 commit policy). |
-| Output | Write **review markdown** to default or `--output` path. |
-| Stdout | Short summary: branch name, remotes to push, suggested next commands. |
-| Stderr | All errors and policy violations (e.g. tracked default path without `--output`). |
+| `--repo-root PATH` | If set, validate path exists and is a git repo (`git rev-parse`); if not → exit **`1`**, stderr explains. If valid, use it as `<contribution-repo-root>` for resolving the **default** output path. If unset, use **cwd** when cwd is a git repo; otherwise **no** default repo root (see below). |
+| `--output PATH` | **Always** allowed. When set, the helper writes the markdown to this path after successful `gh` fetch; **no** git repo is required for the write. When unset, the helper requires a resolved `<contribution-repo-root>` to compute `.iynx/pr-review-feedback.md`. |
+| Output | Write **review markdown** to the final path (default or `--output`). |
+| Stdout | Short summary after a successful write: PR identifier, output path, optional branch/remotes hint when a git repo was used for default path. |
+| Stderr | All errors and policy violations (e.g. cannot resolve repo root for default path, or default path not gitignored without `--output`). |
 
-**Exit codes:** `0` — file written (including stub when no comments); `1` — usage, local path not a git repo, or default output path would be tracked without `--output`; `2` — `gh` missing, auth failure, PR not found, or GitHub API error from `gh`.
+**Exit codes (single rule):** **`0`** iff the markdown file was **written successfully** (including the “no review comments” stub). **`1`** — usage, `--repo-root` not a git repo, **cannot resolve** `<contribution-repo-root>` for default mode (unset `--repo-root` and cwd not a git repo — stderr suggests `gh repo clone` / `gh pr checkout` or passing `--output`), or default path **not gitignored** without `--output`. **`2`** — `gh` missing, auth failure, PR not found, or GitHub API error from `gh`.
 
 **Tests:** Optional pytest with mocked `gh` / subprocess for v1; manual smoke on Windows (PowerShell) and Unix documented in README.
 
@@ -143,6 +143,6 @@ Rationale: aligns with other agent-facing artifacts under `.iynx/` while avoidin
 1. A reader can follow **only** the skill doc to address comments from **either** starting condition (existing clone or PR-only), without guessing branch names.
 2. **Skill + helper alignment:** the skill section **“PR review follow-up”** documents the same **default output path**, **commit policy**, and **Path B clone rule** (head vs base repo) as this spec.
 3. **Skill parity:** the skill includes **equivalent bash and PowerShell** snippets for Phase 1 normalization (`gh pr checkout`) and for invoking the helper (once implemented).
-4. Helper (when shipped) writes a **non-empty** markdown file on success: either populated review content **or** the **“No review comments found”** stub (exit **`0`**). Exits **`2`** with **stderr** when `gh` is missing, the PR is not found, or GitHub/`gh` fails; exits **`1`** for usage/local validation errors (including tracked default path without `--output`).
+4. Helper (when shipped) writes a **non-empty** markdown file on success: either populated review content **or** the **“No review comments found”** stub (exit **`0`**). Exits **`2`** with **stderr** when `gh` is missing, the PR is not found, or GitHub/`gh` fails; exits **`1`** for usage/local validation errors (including **non-gitignored** default path without `--output`, or missing repo root when default mode is used without `--output`).
 5. Default artifact location and commit policy are **fully specified** above; operators are not expected to infer them from upstream `.gitignore` alone.
 6. No requirement to modify **Iynx** orchestrator (`run.py` / Docker phases) for the workflow to be usable in v1.

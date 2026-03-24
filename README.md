@@ -155,6 +155,30 @@ Use **`IYNX_PR_LABEL`** when running the agent so new PRs get the same label and
 
 **Exit codes:** `0` success; `1` config/usage; `2` GitHub HTTP/network error after retries.
 
+### PR review follow-up (GitHub)
+
+After maintainers comment on an open PR, dump review threads into a **local markdown file** for an agent (or you) to implement fixes. Uses **`gh` only** (no direct GitHub REST in this tool). Install and authenticate [GitHub CLI](https://cli.github.com/) on the host.
+
+**Default output:** `<contribution-repo>/.iynx/pr-review-feedback.md` — only if that path is **gitignored** in the target repo; otherwise pass **`--output`** or set **`IYNX_PR_REVIEW_FEEDBACK_PATH`**. **Do not commit** that file.
+
+```bash
+# From inside the contribution clone (branch can be set with gh pr checkout)
+cd workspace/owner-repo
+python ../pr_review.py https://github.com/owner/repo/pull/42
+
+# Or explicit repo + number (from any cwd; use --output if not in a git repo)
+python pr_review.py --repo owner/repo --pr 42 -o /tmp/pr-review-feedback.md
+
+# PowerShell example with explicit output
+python pr_review.py "https://github.com/owner/repo/pull/42" --output "$env:TEMP\pr-review-feedback.md"
+```
+
+**Clone / checkout (normalize first):** from the contribution repo, run `git fetch` and `gh pr checkout <N>` (same PR as your branch). If you have no clone yet, clone the **head** repository from `gh pr view <url> --json headRepository,baseRepository`, add `upstream` when the PR is from a fork, then `gh pr checkout`.
+
+**Exit codes:** `0` file written; `1` usage or local validation (e.g. default path not gitignored); `2` `gh`/GitHub error.
+
+See `skills/issue-fix-workflow.md` § PR review follow-up and `docs/superpowers/specs/2026-03-24-pr-review-followup-design.md`.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -166,6 +190,7 @@ Use **`IYNX_PR_LABEL`** when running the agent so new PRs get the same label and
 | `IYNX_STATS_NO_LABEL` | No | If `1`/`true`, same as `python stats.py --no-label` (author + branch only; no label in search) |
 | `IYNX_STATS_BRANCH_REGEX` | No | Override branch regex for `stats.py` (default matches `fix/issue-<n>`) |
 | `IYNX_STATS_AUTHOR` | No | GitHub login for `stats.py` (default: token’s user) |
+| `IYNX_PR_REVIEW_FEEDBACK_PATH` | No | Output path for `python pr_review.py` when `--output` is omitted (same effect as `--output`; use to write without a local clone). For the default `.iynx/pr-review-feedback.md` path, you still need a repo root and a gitignored target unless you set this to a path outside the repo |
 | `IYNX_PROGRESS_JSONL` | No | Path to JSONL progress file; empty/`0`/`false` disables the file |
 | `IYNX_DOCKER_TTY` | No | If `1` (default), `docker run -t` for streamed steps so Cursor CLI output is line-buffered to the host; set `0` if `-t` fails (e.g. some CI) |
 | `IYNX_DOCKER_TRACE` | No | If `1` (default), every Docker shell step prints `[iynx-docker]` timestamp lines (clone, bootstrap, `cursor-agent`, verify, PR) so `docker logs` / host `[docker]` lines show clear phases; set `0` to silence |
@@ -194,8 +219,10 @@ iynx/
 │   ├── bootstrap.py    # Generate .cursor-agent per repo
 │   ├── workflow_progress.py  # JSONL progress for agents
 │   ├── pr_stats.py     # GitHub PR stats CLI (label + branch filter)
+│   ├── pr_review_followup.py  # PR review → markdown (`gh` only)
 │   └── pr.py           # Fork + push + gh pr create
 ├── stats.py            # Entry: PR statistics (`python stats.py`)
+├── pr_review.py        # Entry: PR review feedback file (`python pr_review.py`)
 ├── skills/
 │   └── issue-fix-workflow.md
 ├── tests/               # pytest (discovery + GitHub checks)

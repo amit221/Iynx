@@ -98,6 +98,68 @@ Check `CONTRIBUTING.md`, `README.md`, or CI config for the actual commands.
 - **Disclaimer**: Mention AI involvement if the repo asks for it
 - **Scope**: Use scopes the repo's PR lint allows (check `.github/workflows/` or contributing docs)
 
+## 6. PR review follow-up (address maintainer comments)
+
+Use this when an open PR already exists and reviewers left feedback. **Contribution repo** = the upstream project you fixed (not the Iynx `the-fixer` repo unless that is your target).
+
+### Default artifact (do not commit)
+
+- **Path:** `<contribution-repo-root>/.iynx/pr-review-feedback.md`
+- **Policy:** Never commit this file. It is local scratch for the agent.
+- **Gitignore:** The helper refuses the default path unless Git ignores it (`git check-ignore`). If the upstream repo does not ignore `.iynx/`, pass **`--output`** or set **`IYNX_PR_REVIEW_FEEDBACK_PATH`** to a path outside the repo (or add an ignore rule locally without committing it—prefer `--output`).
+
+### Phase 1 — Normalize (existing clone)
+
+From the contribution clone (e.g. `workspace/owner-repo/`):
+
+```bash
+git fetch --all --prune
+gh pr checkout <PR_NUMBER>
+```
+
+```powershell
+git fetch --all --prune
+gh pr checkout <PR_NUMBER>
+```
+
+### Phase 1 — Normalize (PR only, no clone yet)
+
+1. Inspect head vs base: `gh pr view <URL> --json headRepository,baseRepository`.
+2. If **head** equals **base** (same `nameWithOwner`): clone that repo, then `gh pr checkout <N>`.
+3. Else (fork PR): clone the **head** repo’s URL from JSON, add `upstream` to the **base** repo URL, then `gh pr checkout <N>` from that clone.
+
+### Phase 2 — Fetch review text into markdown
+
+From the **Iynx** project root (or any cwd if you use `--output` / env):
+
+```bash
+# Inside contribution clone; writes .iynx/pr-review-feedback.md if gitignored
+python pr_review.py https://github.com/owner/repo/pull/42
+
+python pr_review.py owner/repo#42
+python pr_review.py --repo owner/repo --pr 42
+python pr_review.py 42 --repo owner/repo
+```
+
+```powershell
+cd path\to\contribution-clone
+python path\to\the-fixer\pr_review.py "https://github.com/owner/repo/pull/42"
+
+python path\to\the-fixer\pr_review.py --repo owner/repo --pr 42 --output "$env:TEMP\pr-review-feedback.md"
+```
+
+Requires **`gh`** installed and authenticated. If **`--output`** is omitted, **`IYNX_PR_REVIEW_FEEDBACK_PATH`** is used when set; otherwise the default is `.iynx/pr-review-feedback.md` under the contribution repo (requires that path to be gitignored).
+
+### Phase 3 — Implement, verify, push
+
+1. Read the markdown file; address each review thread; ask on the PR if something is ambiguous.
+2. Run tests (and lint/format) using `.iynx/context.json` `test_command` / `lint_command` when present, else CONTRIBUTING.
+3. Commit (do not add `pr-review-feedback.md`); push to the **same branch** as the PR head.
+
+**Exit codes:** `0` = file written; `1` = usage or local validation; `2` = `gh`/GitHub error.
+
+**Spec:** `docs/superpowers/specs/2026-03-24-pr-review-followup-design.md`
+
 ## Adapting to a Repo
 
 Each repo has its own structure. Before starting:
